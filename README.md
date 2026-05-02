@@ -22,7 +22,7 @@ and refactor Python without reading whole files.
 
 ## Cartograph Showcase
 
-pypeeker-cli is a premier showcase for [Cartograph](https://github.com/benteigland11/Cartograph), a platform for reusable engineering. 
+pypeeker-cli is a premier showcase for [Cartograph](https://github.com/benteigland11/Cartograph), a platform for reusable engineering.
 
 Every core feature in pypeeker-cli, from AST parsing to graph cycle detection, is implemented as a standalone, validated Cartograph widget. This architecture ensures that pypeeker-cli is not just a tool, but a modular assembly of hardened building blocks that can be easily extended or repurposed.
 
@@ -30,7 +30,7 @@ Every core feature in pypeeker-cli, from AST parsing to graph cycle detection, i
 
 ## What the agent gets
 
-Three tools over MCP, designed to keep the agent's context budget tight:
+Three MCP tools, designed to keep the agent's context budget tight:
 
 ### `audit(directory, kind=...)` — project-wide checks
 - `kind="cycles"` — import cycles + a `cycle_hubs` ranking of the most-tangled files
@@ -40,148 +40,199 @@ Three tools over MCP, designed to keep the agent's context budget tight:
 ### `peek(path, mode=..., symbol=...)` — file or symbol inspection
 - `mode="skeleton"` — file/package API surface with line ranges for targeted reads
 - `mode="locate"` / `"ancestry"` — find a symbol's definition or class parents
-- `mode="impact"` — both directions for a function: outbound (what it touches) + inbound (who calls it). Use `direction="in"|"out"` to scope, `depth=N` + `root` for transitive outbound
+- `mode="impact"` — bidirectional analysis of a function: outbound (what it depends on) and inbound (who calls it). Use `direction="in"|"out"` to scope, `depth=N` + `root` for transitive outbound
 
 ### `cli(command, args)` — escape hatch
-Runs `pypeeker <command> <args>` and returns stdout. Use when you need a flag the consolidated tools don't expose (e.g., `--include-deps`, custom `--ignore`, `--format json` on a tool that defaults to text).
+Runs `pypeeker <command> <args>` and returns stdout. For flags the typed tools don't expose (`--include-deps`, custom `--ignore`, `--format json` on text-default tools).
 
 ---
 
-## Tool Showcase
+## Real examples
 
-Two views the `Read` tool can't give an agent in one call — both surfaced
-through `peek`:
+All outputs below are real, captured against [`psf/requests`](https://github.com/psf/requests) (and a small synthetic project for the cycles example). Each example shows what the agent invokes over MCP and what comes back.
 
-- **`mode="skeleton"`** — the API surface, without function bodies. Map a
-  file or a whole package, get every signature with line ranges, jump
-  straight to the methods that matter.
-- **`mode="impact"`** — the side-effect map of a function, without mentally
-  tracing the body. What it calls, what it reads, what it writes, whether
-  it touches globals — answered structurally.
+### `audit(kind="cycles")` — find import cycles
 
-The walkthrough below uses [`psf/requests`](https://github.com/psf/requests) — a
-real, well-known library — to answer a real agent question:
-*"How does requests handle authentication during redirects?"*
+Detects runtime and `TYPE_CHECKING` import cycles, ranks the most-tangled files via cycle hubs.
 
-### Map the file — `peek` with `mode="skeleton"`
+> Agent invokes: `audit(directory=".", kind="cycles")`
 
-The agent calls `peek` over MCP with skeleton mode. The tool strips every
-function body and returns imports, signatures, docstrings, and the line
-range each symbol occupies.
+```
+# circular imports
+3 cycles found
 
-> Agent invokes: `peek(path="requests/sessions.py", mode="skeleton")`
-> Returns:
+[hubs] files in 2+ cycles:
+  hub.py  3
+
+[1] runtime cycle:
+  hub.py:1  → a
+  a.py:1  → hub
+
+[2] runtime cycle:
+  hub.py:2  → b
+  b.py:1  → hub
+
+[3] runtime cycle:
+  c.py:1  → hub
+  hub.py:3  → c
+```
+
+The `cycle_hubs` ranking tells the agent which file to refactor first — `hub.py` shows up in all 3 cycles, so untangling it dissolves them all. (psf/requests itself reports `(none)` — clean codebase.)
+
+### `audit(kind="missing-imports")` — catch hallucinated imports
+
+Walks every import statement; reports the ones that don't resolve to a real file.
+
+> Agent invokes: `audit(directory="requests/", kind="missing-imports")`
+
+```
+# missing imports
+utils.py:78     winreg
+help.py:19      chardet
+cookies.py:20   dummy_threading
+compat.py:60    simplejson
+compat.py:67    simplejson
+__init__.py:53  chardet
+```
+
+In requests these are intentional optional/conditional imports — but the same scan over an agent-edited codebase catches imports the agent invented and never actually installed.
+
+### `audit(kind="interfaces")` — find docstring and type-hint gaps
+
+Reports public symbols missing docstrings or annotations.
+
+> Agent invokes: `audit(directory="requests/", kind="interfaces")`
+
+```
+total gaps: 233
+
+utils.py:126  dict_to_sequence
+    missing_type_hint: d
+    missing_return_type
+utils.py:135  super_len
+    missing_docstring
+    missing_type_hint: o
+    missing_return_type
+utils.py:206  get_netrc_auth
+    missing_type_hint: url
+    missing_type_hint: raise_errors
+    missing_return_type
+```
+
+One pass over the project; agent gets a punch list of every gap with file, line, and exact missing piece.
+
+### `peek(mode="skeleton")` — file or package API map
+
+Strips function bodies; returns imports, signatures, docstrings, and the line range each symbol occupies.
+
+> Agent invokes: `peek(path="requests/api.py", mode="skeleton")`
 
 ```python
-import os
-import time
-from .auth import _basic_auth_str
-from .cookies import RequestsCookieJar, extract_cookies_to_jar
-# ...
+from . import sessions
 
-class SessionRedirectMixin:  # L107-353
-    def get_redirect_target(self, resp):  # L108-126
-        """Receives a Response. Returns a redirect URI or ``None``"""
-        ...
+def request(method, url, **kwargs):  # L14-59
+    """
+    Constructs and sends a :class:`Request <Request>`.
+    ...
+    """
+    ...
 
-    def should_strip_auth(self, old_url, new_url):  # L128-158
-        """Decide whether Authorization header should be removed when redirecting"""
-        ...
+def get(url, params=None, **kwargs):  # L62-73
+    ...
 
-    def rebuild_auth(self, prepared_request, response):  # L282-300
-        """When being redirected we may want to strip authentication..."""
-        ...
+def post(url, data=None, json=None, **kwargs):  # L103-115
+    ...
 ```
 
-The two methods we want — `should_strip_auth` and `rebuild_auth` — are now
-visible with their exact line ranges.
+The agent now knows exactly which lines (`L14-59`) to `Read` if it needs the body of `request()`. No full-file scan to find one method.
 
-### Trace what a function touches — `peek` with `mode="impact"`
+### `peek(mode="locate")` — pinpoint a definition
 
-Once the agent has found the function, the next question is usually *"what
-does this affect?"* — globals, class state, external calls. Reading the body
-to find out is the manual approach. `peek` in impact mode answers structurally:
+AST-aware lookup: returns scope ranges, distinguishes definitions from substring matches.
 
-> Agent invokes: `peek(path="requests/sessions.py", mode="impact", symbol="SessionRedirectMixin.rebuild_auth")`
-> Returns:
-
-```json
-{
-  "external": {
-    "calls":  ["get_netrc_auth", "prepared_request.prepare_auth", "self.should_strip_auth"],
-    "reads":  ["self.trust_env", "..."],
-    "writes": [],
-    "globals": []
-  },
-  "internal": {
-    "writes": ["headers", "new_auth", "url"]
-  }
-}
-```
-
-Three external dependencies. Zero global writes. Zero shared-state mutation.
-That's a refactor-safety check the agent can do *before* changing anything,
-in one call instead of a multi-pass read.
-
-Impact mode accepts both bare names (`rebuild_auth`) and qualified names
-(`SessionRedirectMixin.rebuild_auth`) for unambiguous targeting when multiple
-classes share method names.
-
-#### `depth=N`: transitive blast radius across files
-
-The harder refactor question is *"if I change this method's contract, what's
-the cascade?"* — that's what its callees touch, and what their callees touch,
-and so on. `depth=N` walks the call graph up to N levels (max 5), aggregates
-every external write, global mutation, and reached symbol into one answer:
-
-> Agent invokes: `peek(path="backend/services/chat_service.py", mode="impact", symbol="ChatService.process_message", depth=2, root=".")`
-> Returns:
+> Agent invokes: `peek(path="requests/", mode="locate", symbol="Session")`
 
 ```
-# impact: ChatService.process_message  (depth 2)
+# locate: Session
+sessions.py:356-818  class Session(SessionRedirectMixin)
+```
 
-transitive surface across 32 reached symbols:
-  external calls:   323 unique
-  external writes:  1       <- danger zone for refactors
-    self._failed_edit_hashes  in ChatService.process_message (depth 0)
+Pass `mode="ancestry"` to also resolve parent classes:
+
+```
+# locate: Session
+sessions.py:356-818  class Session(SessionRedirectMixin)
+  ↳ sessions.py:107-353  class SessionRedirectMixin
+```
+
+### `peek(mode="impact")` — bidirectional analysis of a function
+
+Default: **both directions in one call.** *Outbound* = what this function depends on (calls, writes, globals). *Inbound* = who calls this function across the project.
+
+> Agent invokes: `peek(path="requests/sessions.py", mode="impact", symbol="Session.send", root="requests/")`
+
+```
+# impact: Session.send
+
+## outbound (what this function reaches into)
+
+  external calls:   16
+    ValueError
+    adapter.send
+    dispatch_hook
+    extract_cookies_to_jar
+    history.insert
+    history.pop
+    isinstance
+    kwargs.get
+    kwargs.pop
+    kwargs.setdefault
+    next
+    preferred_clock
+    resolve_proxies
+    self.get_adapter
+    self.resolve_redirects
+    timedelta
+  external writes:  0
   globals modified: 0
 
-reached symbols:
-  depth 0  ChatService.process_message     backend/services/chat_service.py
-  depth 1  build_summary_context            backend/context_builder.py
-  depth 1  schedule_summary_update          backend/summary_updater.py
-  ... (29 more)
+## inbound (who calls this) — 4 match(es)
 
-unresolved (notable, 63):
-  print                          in ChatService.process_message [effect_builtin]
-  asyncio.create_task            in ChatService.process_message [stdlib]
-  re.search                      in ChatService.process_message [stdlib]
-  hashlib.md5                    in ChatService.process_message [stdlib]
-  json.dumps                     in ChatService.process_message [stdlib]
-  ...
-
-unresolved (filtered, 316): 265 dispatch, 48 pure builtin, 3 exception
+  requests/sessions.py:265
+  requests/sessions.py:591
+  requests/sessions.py:705
+  requests/auth.py:276
 ```
 
-A 2,805-line method that calls into 32 other functions transitively mutates
-**exactly one** external attribute. That's a structural answer to "is this
-safe to refactor?" — derived in one tool call, with the unresolved cases
-flagged so the agent knows where its view is incomplete.
+Two refactor questions answered in one call:
 
-**Static resolution only.** `self.X`, `Class.X`, and statically-imported
-names are followed. Dynamic dispatch (`obj.method()` where `obj`'s type is
-inferred at runtime) is reported as `unresolved`, not silently followed.
-Cycle-safe (visited-set deduplication). Project-bounded via the `root` parameter.
+- **Outbound:** `Session.send` depends on 16 external calls, mutates zero external state, touches zero globals. Pure dispatcher — agent can trust the body without reading it.
+- **Inbound:** 4 callers across 2 files. If the agent changes `Session.send`'s contract, those are the 4 lines that might break.
 
-### The token math
+Scope flags:
+- `direction="out"` — only outbound (when you only care about what the function depends on).
+- `direction="in"` — only inbound (when you only care about callers).
+- `depth=N` (max 5) — transitive outbound. Walks the call graph N levels and aggregates writes, globals, and unresolved calls into one surface. **Static resolution only:** `self.X`, `Class.X`, and statically-imported names are followed; dynamic dispatch is reported as `unresolved`, not silently followed. Cycle-safe.
+
+### `cli(command, args)` — escape hatch
+
+Runs an arbitrary `pypeeker <command> <args>` and returns its stdout. Use when you need a flag the typed tools don't expose.
+
+> Agent invokes: `cli(command="impact", args=["Session.send", "requests/sessions.py", "--depth", "2", "--root", "requests/"])`
+
+Returns raw `pypeeker` stdout in a `{stdout, stderr, exit_code}` envelope. Prefer the typed tools when you can — they're easier for agents to reason about — and reach for `cli` when you need a one-off flag.
+
+---
+
+## The token math
 
 Same task — find where requests handles redirect auth — measured against
 actual agent tool output, including the `Read` tool's line-number prefixes.
 Tokens counted with OpenAI's `o200k_base` tokenizer (used by GPT-4o, o1, o3, and GPT-5).
 
-| Workflow                                                                    | Tokens |
-|-----------------------------------------------------------------------------|-------:|
-| `Read sessions.py` (full file)                                              | 9,063  |
+| Workflow                                                                    | Tokens    |
+|-----------------------------------------------------------------------------|----------:|
+| `Read sessions.py` (full file)                                              |     9,063 |
 | **`skeleton sessions.py` + 2 targeted `Read` calls (L128-158, L282-300)**   | **3,218** |
 
 The agent ends up reading only the two methods that actually matter, instead
@@ -197,17 +248,6 @@ For project-scale orientation, mapping the full `requests` package (18 files):
 
 The entire library API surface — every public class, signature, docstring, and
 line range — in one call.
-
-### Also covered by the same tools
-
-- **`peek(mode="locate"|"ancestry")`** — AST-aware symbol search with scope ranges. No false positives from substring matches; distinguishes definitions from inheritance.
-- **`peek(mode="impact")`** — both directions of a function in one call: outbound (what it depends on) and inbound (who calls it). Replaces the prior `usages`-as-its-own-thing split.
-- **`audit(kind="cycles")`** — import cycles, separates runtime cycles from safe `TYPE_CHECKING` cycles, ranks files by cycle membership.
-- **`audit(kind="missing-imports")`** — hallucinated or broken internal imports.
-- **`audit(kind="interfaces")`** — missing docstrings and type annotations across a project.
-
-All modes default to condensed text/stub output for the agent. Pass
-`format="json"` when the agent needs to navigate fields programmatically.
 
 ---
 
@@ -253,6 +293,20 @@ The server is pre-configured via `.windsurf/mcp_config.json`.
 #### Claude Desktop and Aider
 Copy the JSON from `claude_desktop_snippet.json` into your global `claude_desktop_config.json`.
 
+### Project config
+
+Add a `[tool.pypeeker]` section to your `pyproject.toml` to extend the default
+ignore list project-wide:
+
+```toml
+[tool.pypeeker]
+ignore = ["legacy", "vendor"]
+```
+
+These directories are added to the defaults (`venv`, `__pycache__`, `dist`,
+`node_modules`, `.mypy_cache`, `.tox`, `build`). Active skip list is returned
+in every `audit` response under `meta.skip_list`.
+
 ### Update notifications
 
 When the MCP server starts, it checks PyPI once per session (cached 24h, 2-second timeout, fail-quiet) for a newer release. If your installed version is stale, agents see a one-line `pip install -U pypeeker-cli` notice prepended to the server instructions; up-to-date sessions see nothing. Set `PYPEEKER_CLI_NO_VERSION_CHECK=1` to disable the check entirely (e.g. on airgapped networks).
@@ -268,6 +322,7 @@ Built using the following Cartograph Widgets (found in `cg/`):
 - `data-ast-symbol-locator-python`: Surgical symbol pinpointing and ancestry.
 - `data-ast-interface-validator-python`: API gap detection.
 - `data-ast-impact-analyzer-python`: Side-effect and dependency mapping.
+- `infra-mcp-server-readiness-python`: FastMCP version stamping + CLI escape-hatch primitives.
 - `infra-mcp-manifest-generator-python`: Automated distribution scaffolding.
 - `universal-agent-response-python`: Standardized JSON schema.
 - `universal-list-paginator-python`: Result set pagination.
