@@ -23,8 +23,16 @@ jobs:
         pip install mcp pytest pytest-cov
         pip install -e .
         
-    - name: Run Tests
+    - name: Run Widget Tests
       run: |
-        # Run pytest on the entire project
-        # This will pick up all widget tests in cg/ and top-level tests
-        pytest --cov=pypeeker --cov=cg
+        # Run tests for each widget individually to avoid 'src' namespace collisions
+        for d in cg/*; do
+          if [ -d "$d/tests" ]; then
+            echo "Running tests for $d..."
+            PYTHONPATH=$PYTHONPATH:$(pwd)/$d pytest $d/tests
+          fi
+        done
+        
+    - name: Run CLI Tests
+      run: |
+        pytest tests/test_cli.py

@@ -44,7 +44,7 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.0.0"
+        version="1.0.1"
     )
     
     # Common arguments for analysis commands
