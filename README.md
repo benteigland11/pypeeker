@@ -92,41 +92,51 @@ Identify exactly which class attributes or globals a function modifies before re
 
 ## Installation
 
-Install pypeeker-cli globally using pip:
+Install the pypeeker-cli core primitive globally using pip:
 
 ```bash
 pip install pypeeker-cli
 ```
 
-*(Note: While in development, you can install locally via pip install .)*
-
----
-
-## Release Flow
-
-Pypeeker uses Trusted Publishing (OIDC) via GitHub Actions.
-
-1.  **Tag a release**: `git tag -a v1.0.0-cli -m "Release v1.0.0-cli"`
-2.  **Push the tag**: `git push origin v1.0.0-cli`
-3.  The `pypi-publish.yml` workflow will automatically build and publish the version to PyPI.
+This provides the `pypeeker` command on your system path.
 
 ---
 
 ## Agent Native Integration
 
-pypeeker-cli is built to be a native plugin for AI agents using the Model Context Protocol (MCP).
+pypeeker-cli is designed to be consumed by AI agents via the Model Context Protocol (MCP). After installing the CLI, you can integrate it into your agent of choice.
 
-### Subcommand Usage
+### Integration Methods
+
+#### Gemini CLI
+Install as a native extension:
 ```bash
-pypeeker mcp
+gemini extensions install https://github.com/benteigland11/pypeeker
 ```
 
-### Supported Platforms
-*   **Gemini CLI**: `extension/gemini-extension.json`
-*   **Claude Code**: `.claude-plugin/plugin.json`
-*   **Cursor and Roo Code**: `.cursor/mcp.json` (Auto-detected)
-*   **Continue (VS Code / JetBrains)**: `.continue/mcpServers/pypeeker.json`
-*   **Windsurf**: `.windsurf/mcp_config.json`
+#### Claude Code
+Add as a persistent MCP server:
+```bash
+claude mcp add pypeeker-cli -- pypeeker mcp
+```
+
+#### Codex
+Add as a global MCP server:
+```bash
+codex mcp add pypeeker-cli -- pypeeker mcp
+```
+
+#### Cursor and Roo Code
+Pypeeker is pre-configured for automatic detection via `.cursor/mcp.json`.
+
+#### Continue
+The server is pre-configured via `.continue/mcpServers/pypeeker.json`.
+
+#### Windsurf
+The server is pre-configured via `.windsurf/mcp_config.json`.
+
+#### Claude Desktop and Aider
+Copy the JSON from `claude_desktop_snippet.json` into your global `claude_desktop_config.json`.
 
 ---
 

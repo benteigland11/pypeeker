@@ -69,26 +69,25 @@ class McpManifestGenerator:
         }
         self._write_json(output_dir, "plugin.json", manifest)
 
-    def generate_marketplace(self, output_path: str = "."):
-        """Generates marketplace.json."""
+    def generate_marketplace(self, output_dir: str = ".agents/plugins"):
+        """Generates marketplace.json using official Codex schema."""
         manifest = {
-            "name": f"{self.metadata['name'].capitalize()} Marketplace",
-            "version": self.metadata["version"],
+            "name": f"{self.metadata['name']}-marketplace",
+            "interface": {
+                "displayName": f"{self.metadata['name'].capitalize()} Tools"
+            },
             "plugins": [
                 {
                     "name": self.metadata["name"],
-                    "source": ".",
-                    "description": self.metadata["description"],
-                    "mcpServers": {
-                        self.metadata["name"]: {
-                            "command": self.metadata["command"],
-                            "args": self.metadata["args"]
-                        }
-                    }
+                    "source": {
+                        "source": "local",
+                        "path": "../.."
+                    },
+                    "category": "Development"
                 }
             ]
         }
-        self._write_json(output_path, "marketplace.json", manifest)
+        self._write_json(output_dir, "marketplace.json", manifest)
 
     def generate_cursor(self, output_dir: str = ".cursor"):
         """Generates mcp.json for Cursor or Roo Code."""
@@ -145,6 +144,27 @@ class McpManifestGenerator:
         }
         self._write_json(output_dir, "mcp_config.json", manifest)
 
+    def generate_codex(self, output_dir: str = ".codex-plugin"):
+        """Generates plugin.json and .mcp.json for Codex."""
+        plugin_manifest = {
+            "name": self.metadata["name"],
+            "version": self.metadata["version"],
+            "description": self.metadata["description"],
+            "mcpServers": "./.mcp.json"
+        }
+        self._write_json(output_dir, "plugin.json", plugin_manifest)
+        
+        mcp_config = {
+            "mcp_servers": {
+                self.metadata["name"]: {
+                    "command": self.metadata["command"],
+                    "args": self.metadata["args"],
+                    "env": self.metadata["env"]
+                }
+            }
+        }
+        self._write_json(".", ".mcp.json", mcp_config)
+
     def generate_claude_desktop_snippet(self, output_path: str = "."):
         """Generates a snippet for Claude Desktop/Aider global config."""
         snippet = {
@@ -167,6 +187,7 @@ class McpManifestGenerator:
         self.generate_opencode()
         self.generate_continue()
         self.generate_windsurf()
+        self.generate_codex()
         self.generate_claude_desktop_snippet()
 
     def _write_json(self, directory: str, filename: str, data: Any):
