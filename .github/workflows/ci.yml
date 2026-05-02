@@ -28,7 +28,7 @@ jobs:
       # Widget tests live in cg/ and run via Cartograph's validator (each widget
       # has its own src-relative imports that collide if pytest crawls all of cg/).
       run: |
-        pytest pypeeker
+        pytest tests
 
   wheel-smoke-test:
     name: Wheel install smoke test
