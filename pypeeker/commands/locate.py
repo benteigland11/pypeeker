@@ -4,7 +4,7 @@ from typing import Any, Dict
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_symbol_locator_python.src.ast_symbol_locator import locate_symbol
-from pypeeker.commands.common import paginated_success, relative_file, require_python_file
+from pypeeker.commands.common import paginated_success, relative_file, require_python_file, resolve_ignore
 
 def _format_match(m: dict) -> str:
     start = m.get("start_line")
@@ -50,7 +50,7 @@ def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
             return error
         files_to_process.append(target_path)
     else:
-        ignore = args.ignore if args.ignore else []
+        ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
         files_to_process = walk_python_files(target_path, ignore_dirs=ignore)
 
     mode = "usage" if getattr(args, "usages", False) else "definition"

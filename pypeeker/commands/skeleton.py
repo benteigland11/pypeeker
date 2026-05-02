@@ -5,7 +5,7 @@ from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_skeleton_parser_python.src.ast_skeleton_parser import parse_skeleton
 from cg.data_ast_skeleton_parser_python.src.stub_renderer import render_stub
-from pypeeker.commands.common import paginated_success, relative_file, require_python_file
+from pypeeker.commands.common import paginated_success, relative_file, require_python_file, resolve_ignore
 
 def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'skeleton' command."""
@@ -27,7 +27,7 @@ def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
         files_to_process.append(target_path)
         is_single_file = True
     else:
-        ignore = args.ignore if args.ignore else []
+        ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
         files_to_process = walk_python_files(target_path, ignore_dirs=ignore)
 
     skeletons = []

@@ -74,6 +74,90 @@ def test_interfaces_can_include_tests(tmp_path):
     assert {item["file"] for item in result["data"]} == {"pkg/module.py", "tests/test_module.py"}
 
 
+def test_resolve_ignore_merges_user_with_defaults():
+    """User-provided ignores are added to defaults, not replacing them."""
+    from pypeeker.commands.common import resolve_ignore, DEFAULT_IGNORE_DIRS
+
+    merged = set(resolve_ignore(["custom_dir"], include_deps=False))
+    assert "custom_dir" in merged
+    assert "venv" in merged  # default still present
+    assert "__pycache__" in merged  # default still present
+    assert merged >= DEFAULT_IGNORE_DIRS  # all defaults preserved
+
+
+def test_resolve_ignore_include_deps_drops_defaults():
+    """include_deps=True bypasses the default skip list."""
+    from pypeeker.commands.common import resolve_ignore
+
+    minimal = set(resolve_ignore(["custom_dir"], include_deps=True))
+    assert minimal == {"custom_dir"}
+
+
+def test_resolve_ignore_handles_none_user_input():
+    """A None user-ignore yields just the defaults."""
+    from pypeeker.commands.common import resolve_ignore, DEFAULT_IGNORE_DIRS
+
+    assert set(resolve_ignore(None, include_deps=False)) == DEFAULT_IGNORE_DIRS
+    assert resolve_ignore(None, include_deps=True) == []
+
+
+def test_circular_skips_venv_by_default(tmp_path):
+    """A venv full of cycles should be invisible to default scans."""
+    from pypeeker.commands.circular import cmd_circular
+
+    # Create a real cycle in the project root
+    (tmp_path / "a.py").write_text("import b\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("import a\n", encoding="utf-8")
+    # Create a cycle inside a venv (should be ignored)
+    venv = tmp_path / "venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "x.py").write_text("import y\n", encoding="utf-8")
+    (venv / "y.py").write_text("import x\n", encoding="utf-8")
+
+    args = Namespace(directory=str(tmp_path), ignore=[], page=1, size=20, format="json", summary_only=False, include_deps=False)
+    result = cmd_circular(args)
+
+    assert result["meta"]["total_cycles"] == 1  # only the project-level cycle
+
+
+def test_circular_surfaces_cycle_hubs(tmp_path):
+    """Circular scan ranks files by the number of cycles they appear in."""
+    from pypeeker.commands.circular import cmd_circular
+
+    # Two cycles, both passing through hub.py:
+    #   hub.py -> a.py -> hub.py
+    #   hub.py -> b.py -> hub.py
+    (tmp_path / "hub.py").write_text("import a\nimport b\n", encoding="utf-8")
+    (tmp_path / "a.py").write_text("import hub\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("import hub\n", encoding="utf-8")
+
+    args = Namespace(directory=str(tmp_path), ignore=[], page=1, size=20, format="json", summary_only=False)
+    result = cmd_circular(args)
+
+    assert result["status"] == "success"
+    assert result["meta"]["total_cycles"] == 2
+    hubs = result["meta"]["cycle_hubs"]
+    assert hubs[0]["file"] == "hub.py"
+    assert hubs[0]["cycle_count"] == 2
+
+
+def test_circular_summary_only_suppresses_cycle_bodies(tmp_path):
+    """summary_only mode returns the count + hubs without per-cycle detail."""
+    from pypeeker.commands.circular import cmd_circular
+
+    (tmp_path / "hub.py").write_text("import a\nimport b\n", encoding="utf-8")
+    (tmp_path / "a.py").write_text("import hub\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("import hub\n", encoding="utf-8")
+
+    args = Namespace(directory=str(tmp_path), ignore=[], page=1, size=20, format="text", summary_only=True)
+    result = cmd_circular(args)
+
+    text = result["data"]["text"]
+    assert "[hubs]" in text
+    assert "hub.py" in text
+    assert "[1] runtime cycle:" not in text  # cycle bodies suppressed
+
+
 def test_impact_disambiguates_methods_by_class(tmp_path):
     """Verify impact accepts qualified Class.method names so same-named methods resolve correctly."""
     target = tmp_path / "mod.py"

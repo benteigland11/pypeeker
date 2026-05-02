@@ -40,13 +40,14 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.3.0"
+        version="1.4.0"
     )
     
     # Common arguments for analysis commands
     analysis_args = [
         {"name": "directory", "help": "Root directory to scan"},
-        {"name": "--ignore", "nargs": "*", "help": "Directories to ignore", "default": []},
+        {"name": "--ignore", "nargs": "*", "help": "Additional directories to ignore (added to defaults like venv, __pycache__, node_modules, etc.)", "default": []},
+        {"name": "--include-deps", "action": "store_true", "dest": "include_deps", "help": "Scan everything including venvs, build artifacts, and caches (off by default)"},
         {"name": "--page", "type": int, "default": 1, "help": "Page number"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size"},
     ]
@@ -67,7 +68,8 @@ def main() -> None:
     # Arguments for path-based commands
     path_args = [
         {"name": "path", "help": "File or directory to scan"},
-        {"name": "--ignore", "nargs": "*", "help": "Directories to ignore (if path is a dir)", "default": []},
+        {"name": "--ignore", "nargs": "*", "help": "Additional directories to ignore (added to defaults like venv, __pycache__, node_modules, etc.)", "default": []},
+        {"name": "--include-deps", "action": "store_true", "dest": "include_deps", "help": "Scan everything including venvs, build artifacts, and caches (off by default)"},
         {"name": "--page", "type": int, "default": 1, "help": "Page number (if path is a dir)"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size (if path is a dir)"},
         {"name": "--format", "choices": ["json", "stub"], "default": "stub", "help": "Output format: 'stub' (default, Python stub text with line ranges) or 'json' (structured AST)"},
@@ -79,7 +81,8 @@ def main() -> None:
         {"name": "path", "help": "File or directory to search within"},
         {"name": "--usages", "action": "store_true", "help": "Find where the symbol is used instead of defined"},
         {"name": "--inherited", "action": "store_true", "help": "If a class, also locate its parent classes"},
-        {"name": "--ignore", "nargs": "*", "help": "Directories to ignore (if path is a dir)", "default": []},
+        {"name": "--ignore", "nargs": "*", "help": "Additional directories to ignore (added to defaults like venv, __pycache__, node_modules, etc.)", "default": []},
+        {"name": "--include-deps", "action": "store_true", "dest": "include_deps", "help": "Scan everything including venvs, build artifacts, and caches (off by default)"},
         {"name": "--page", "type": int, "default": 1, "help": "Page number (if path is a dir)"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size (if path is a dir)"},
         text_format_arg,
@@ -90,7 +93,9 @@ def main() -> None:
             "name": "circular",
             "help": "Scan for circular imports in the project",
             "handler": cmd_circular,
-            "args": scan_args,
+            "args": scan_args + [
+                {"name": "--summary-only", "action": "store_true", "dest": "summary_only", "help": "Show cycle count and hub list only; skip per-cycle details"},
+            ],
         },
         {
             "name": "missing",

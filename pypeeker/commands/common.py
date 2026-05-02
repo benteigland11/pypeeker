@@ -1,8 +1,39 @@
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, List, Optional
 
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.universal_list_paginator_python.src.list_paginator import paginate
+
+
+# Common Python project clutter that almost no one wants in an AST scan.
+# Includes virtualenvs, build outputs, caches, VCS, and JS dep dirs.
+DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset({
+    # Virtualenvs
+    "venv", ".venv", "env", "ENV", "virtualenv",
+    # Caches
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".tox", ".nox", ".cache",
+    # VCS
+    ".git", ".hg", ".svn",
+    # Build/dist artifacts
+    "dist", "build", "site-packages",
+    # JS/Node ecosystems (sometimes co-located in Python projects)
+    "node_modules",
+})
+
+
+def resolve_ignore(user_ignore: Optional[Iterable[str]], include_deps: bool = False) -> List[str]:
+    """Merge user-provided ignores with sensible Python defaults.
+
+    :param user_ignore: Directories the caller explicitly wants skipped.
+    :param include_deps: If True, skip the default skip list (scan everything,
+                         including venvs, caches, build artifacts).
+    :returns: Final list of directory names to skip during file walking.
+    """
+    user_set = set(user_ignore) if user_ignore else set()
+    if include_deps:
+        return sorted(user_set)
+    return sorted(user_set | DEFAULT_IGNORE_DIRS)
 
 
 def pagination_meta(pagination: Dict[str, Any]) -> Dict[str, Any]:

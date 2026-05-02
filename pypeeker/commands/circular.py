@@ -1,17 +1,40 @@
 import os
 import argparse
-from typing import Any, Dict
+from collections import Counter
+from typing import Any, Dict, List, Tuple
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
 from cg.universal_graph_cycles_python.src.graph_cycles import find_cycles
-from pypeeker.commands.common import paginated_success
+from pypeeker.commands.common import paginated_success, resolve_ignore
 
 
-def _render_circular_text(cycles: list[dict]) -> str:
+def _compute_hubs(cycles: list[dict], min_appearances: int = 2) -> List[Tuple[str, int]]:
+    """Return (file, cycle_count) sorted desc for files appearing in >= min_appearances cycles."""
+    counter: Counter = Counter()
+    for cycle in cycles:
+        # Each file in a cycle is counted once per cycle (the cycle "involves" it)
+        files_in_cycle = {step["file"] for step in cycle["steps"]}
+        counter.update(files_in_cycle)
+    return [(f, n) for f, n in counter.most_common() if n >= min_appearances]
+
+
+def _render_circular_text(cycles: list[dict], hubs: List[Tuple[str, int]], summary_only: bool = False) -> str:
     if not cycles:
         return "# circular imports\n(none)\n"
-    lines = ["# circular imports"]
+    lines = ["# circular imports", f"{len(cycles)} cycles found"]
+
+    if hubs:
+        lines.append("")
+        lines.append("[hubs] files in 2+ cycles:")
+        # Pad file names so counts align; cap width to keep things readable
+        max_w = min(max(len(f) for f, _ in hubs), 60)
+        for f, n in hubs:
+            lines.append(f"  {f:<{max_w}}  {n}")
+
+    if summary_only:
+        return "\n".join(lines) + "\n"
+
     for i, cycle in enumerate(cycles, 1):
         kind = "type-only" if cycle["is_type_only"] else "runtime"
         lines.append(f"\n[{i}] {kind} cycle:")
@@ -32,7 +55,7 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
         return AgentResponse.error(f"{root_dir} is not a directory.", code="DIRECTORY_NOT_FOUND")
 
     # 1. Walk files
-    ignore = args.ignore if args.ignore else []
+    ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
     files = walk_python_files(root_dir, ignore_dirs=ignore)
     
     # 2. Parse imports and build graph
@@ -72,10 +95,18 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
             "is_type_only": is_type_only_cycle
         })
     
+    hubs = _compute_hubs(formatted_cycles)
+    hubs_meta = [{"file": f, "cycle_count": n} for f, n in hubs]
+    summary_only = bool(getattr(args, "summary_only", False))
+
     if fmt == "text":
         return AgentResponse.success(
-            data={"text": _render_circular_text(formatted_cycles)},
-            meta={"root_directory": root_dir, "total_cycles": len(formatted_cycles)},
+            data={"text": _render_circular_text(formatted_cycles, hubs, summary_only=summary_only)},
+            meta={
+                "root_directory": root_dir,
+                "total_cycles": len(formatted_cycles),
+                "cycle_hubs": hubs_meta,
+            },
         )
 
     return paginated_success(
@@ -85,5 +116,6 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
         meta={
             "root_directory": root_dir,
             "total_cycles": len(formatted_cycles),
+            "cycle_hubs": hubs_meta,
         }
     )
