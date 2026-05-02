@@ -102,7 +102,9 @@ def extract_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict:
         "docstring": ast.get_docstring(node),
         "decorators": extract_decorators(node),
         "args": extract_arguments(node.args),
-        "returns": returns
+        "returns": returns,
+        "lineno": node.lineno,
+        "end_lineno": getattr(node, "end_lineno", node.lineno),
     }
 
 def extract_class(node: ast.ClassDef) -> dict:
@@ -126,7 +128,9 @@ def extract_class(node: ast.ClassDef) -> dict:
         "decorators": extract_decorators(node),
         "bases": bases,
         "variables": variables,
-        "methods": methods
+        "methods": methods,
+        "lineno": node.lineno,
+        "end_lineno": getattr(node, "end_lineno", node.lineno),
     }
 
 def parse_skeleton(file_path: str) -> dict:

@@ -6,10 +6,24 @@ from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
 from pypeeker.commands.common import paginated_success
 
+
+def _render_missing_text(items: list[dict]) -> str:
+    if not items:
+        return "# missing imports\n(none)\n"
+    lines = ["# missing imports"]
+    for it in items:
+        tc = "  [TYPE_CHECKING]" if it.get("is_type_checking") else ""
+        lines.append(f"{it['file']}:{it['line']}  {it['import']}{tc}")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'missing' command."""
     root_dir = os.path.abspath(args.directory)
-    
+    fmt = getattr(args, "format", "json") or "json"
+    if fmt not in ("json", "text"):
+        return AgentResponse.error(f"Unknown format '{fmt}'. Use 'json' or 'text'.", code="BAD_FORMAT")
+
     if not os.path.isdir(root_dir):
         return AgentResponse.error(f"{root_dir} is not a directory.", code="DIRECTORY_NOT_FOUND")
 
@@ -35,6 +49,12 @@ def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
                     "absolute_path": file
                 })
     
+    if fmt == "text":
+        return AgentResponse.success(
+            data={"text": _render_missing_text(missing_imports)},
+            meta={"root_directory": root_dir, "total_missing": len(missing_imports)},
+        )
+
     return paginated_success(
         missing_imports,
         page=args.page,

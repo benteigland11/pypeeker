@@ -7,10 +7,27 @@ from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports
 from cg.universal_graph_cycles_python.src.graph_cycles import find_cycles
 from pypeeker.commands.common import paginated_success
 
+
+def _render_circular_text(cycles: list[dict]) -> str:
+    if not cycles:
+        return "# circular imports\n(none)\n"
+    lines = ["# circular imports"]
+    for i, cycle in enumerate(cycles, 1):
+        kind = "type-only" if cycle["is_type_only"] else "runtime"
+        lines.append(f"\n[{i}] {kind} cycle:")
+        for step in cycle["steps"]:
+            tc = "  [TYPE_CHECKING]" if step.get("is_type_checking") else ""
+            lines.append(f"  {step['file']}:{step['line']}  → {step['import']}{tc}")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'circular' command."""
     root_dir = os.path.abspath(args.directory)
-    
+    fmt = getattr(args, "format", "json") or "json"
+    if fmt not in ("json", "text"):
+        return AgentResponse.error(f"Unknown format '{fmt}'. Use 'json' or 'text'.", code="BAD_FORMAT")
+
     if not os.path.isdir(root_dir):
         return AgentResponse.error(f"{root_dir} is not a directory.", code="DIRECTORY_NOT_FOUND")
 
@@ -55,6 +72,12 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
             "is_type_only": is_type_only_cycle
         })
     
+    if fmt == "text":
+        return AgentResponse.success(
+            data={"text": _render_circular_text(formatted_cycles)},
+            meta={"root_directory": root_dir, "total_cycles": len(formatted_cycles)},
+        )
+
     return paginated_success(
         formatted_cycles,
         page=args.page,

@@ -41,7 +41,7 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.1.0"
+        version="1.2.0"
     )
     
     # Common arguments for analysis commands
@@ -51,6 +51,9 @@ def main() -> None:
         {"name": "--page", "type": int, "default": 1, "help": "Page number"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size"},
     ]
+
+    text_format_arg = {"name": "--format", "choices": ["json", "text"], "default": "text", "help": "Output format: 'text' (default, condensed line-anchored summary) or 'json' (structured)"}
+    scan_args = analysis_args + [text_format_arg]
 
     interface_args = analysis_args + [
         {
@@ -68,6 +71,7 @@ def main() -> None:
         {"name": "--ignore", "nargs": "*", "help": "Directories to ignore (if path is a dir)", "default": []},
         {"name": "--page", "type": int, "default": 1, "help": "Page number (if path is a dir)"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size (if path is a dir)"},
+        {"name": "--format", "choices": ["json", "stub"], "default": "stub", "help": "Output format: 'stub' (default, Python stub text with line ranges) or 'json' (structured AST)"},
     ]
     
     # Arguments for locate
@@ -79,6 +83,7 @@ def main() -> None:
         {"name": "--ignore", "nargs": "*", "help": "Directories to ignore (if path is a dir)", "default": []},
         {"name": "--page", "type": int, "default": 1, "help": "Page number (if path is a dir)"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size (if path is a dir)"},
+        text_format_arg,
     ]
     
     cli.add_commands("Project Scan", [
@@ -86,13 +91,13 @@ def main() -> None:
             "name": "circular",
             "help": "Scan for circular imports in the project",
             "handler": cmd_circular,
-            "args": analysis_args,
+            "args": scan_args,
         },
         {
             "name": "missing",
             "help": "Scan for unresolved (hallucinated) internal imports",
             "handler": cmd_missing,
-            "args": analysis_args,
+            "args": scan_args,
         },
         {
             "name": "interfaces",
@@ -125,6 +130,7 @@ def main() -> None:
             "args": [
                 {"name": "symbol", "help": "Function name to map"},
                 {"name": "path", "help": "Path to the .py file"},
+                {"name": "--format", "choices": ["json", "pseudo"], "default": "pseudo", "help": "Output format: 'pseudo' (default, line-anchored pseudocode) or 'json' (structured tree)"},
             ],
         },
         {

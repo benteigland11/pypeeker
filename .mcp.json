@@ -1,5 +1,5 @@
 {
-  "mcp_servers": {
+  "mcpServers": {
     "pypeeker": {
       "command": "pypeeker",
       "args": [

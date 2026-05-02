@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="pypeeker-cli",
-    version="1.1.0",
+    version="1.2.0",
     author="Agent Tools",
     description="A zero-dependency Python CLI toolset designed for AI agents to analyze codebases with surgical precision.",
     long_description=long_description,

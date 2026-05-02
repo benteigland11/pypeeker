@@ -6,12 +6,39 @@ from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_symbol_locator_python.src.ast_symbol_locator import locate_symbol
 from pypeeker.commands.common import paginated_success, relative_file, require_python_file
 
+def _format_match(m: dict) -> str:
+    start = m.get("start_line")
+    end = m.get("end_line")
+    if start and end and end != start:
+        loc = f"{m['file']}:{start}-{end}"
+    elif start:
+        loc = f"{m['file']}:{start}"
+    else:
+        loc = m["file"]
+    sig = m.get("signature") or m.get("name", "")
+    return f"{loc}  {sig}"
+
+
+def _render_locate_text(matches: list[dict], symbol: str) -> str:
+    if not matches:
+        return f"# locate: {symbol}\n(no matches)\n"
+    lines = [f"# locate: {symbol}"]
+    for m in matches:
+        lines.append(_format_match(m))
+        for anc in m.get("ancestors", []) or []:
+            lines.append(f"  ↳ {_format_match(anc)}")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'locate' command."""
     target_path = os.path.abspath(args.path)
     symbol = args.symbol
     is_single_file = os.path.isfile(target_path)
-    
+    fmt = getattr(args, "format", "json") or "json"
+    if fmt not in ("json", "text"):
+        return AgentResponse.error(f"Unknown format '{fmt}'. Use 'json' or 'text'.", code="BAD_FORMAT")
+
     if not os.path.exists(target_path):
         return AgentResponse.error(f"{target_path} does not exist.", code="PATH_NOT_FOUND")
 
@@ -63,6 +90,15 @@ def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
                 match["ancestors"] = ancestors
                 
             all_matches.append(match)
+
+    if fmt == "text":
+        return AgentResponse.success(
+            data={"symbol": symbol, "text": _render_locate_text(all_matches, symbol)},
+            meta={
+                "root_directory": target_path if os.path.isdir(target_path) else os.path.dirname(target_path),
+                "total_matches": len(all_matches),
+            },
+        )
 
     return paginated_success(
         all_matches,

@@ -21,13 +21,22 @@ def test_cli_help():
 
 
 def test_cli_circular_json():
-    """Verify circular command returns valid JSON."""
-    # Run against the current directory
-    result = subprocess.run([sys.executable, "-m", "pypeeker.cli", "circular", "."], capture_output=True, text=True)
+    """Verify circular --format json returns the structured list payload."""
+    result = subprocess.run([sys.executable, "-m", "pypeeker.cli", "circular", ".", "--format", "json"], capture_output=True, text=True)
     assert result.returncode == 0
     data = json.loads(result.stdout)
     assert data["status"] == "success"
     assert isinstance(data["data"], list)
+
+
+def test_cli_circular_default_text():
+    """Verify circular defaults to the condensed text payload."""
+    result = subprocess.run([sys.executable, "-m", "pypeeker.cli", "circular", "."], capture_output=True, text=True)
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["status"] == "success"
+    assert "text" in data["data"]
+    assert data["data"]["text"].startswith("# circular imports")
 
 
 def test_interfaces_ignores_tests_by_default(tmp_path):

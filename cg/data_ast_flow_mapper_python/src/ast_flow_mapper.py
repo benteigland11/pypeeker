@@ -7,6 +7,8 @@ class FlowVisitor(ast.NodeVisitor):
         self.flow_tree = []
         self._found = False
         self._class_stack = []
+        self.lineno = None
+        self.end_lineno = None
 
     def visit_ClassDef(self, node: ast.ClassDef):
         self._class_stack.append(node.name)
@@ -17,12 +19,16 @@ class FlowVisitor(ast.NodeVisitor):
         if self._matches_target(node.name):
             self._found = True
             self.flow_tree = self.map_body(node.body)
+            self.lineno = node.lineno
+            self.end_lineno = getattr(node, "end_lineno", node.lineno)
         self.generic_visit(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
         if self._matches_target(node.name):
             self._found = True
             self.flow_tree = self.map_body(node.body)
+            self.lineno = node.lineno
+            self.end_lineno = getattr(node, "end_lineno", node.lineno)
         self.generic_visit(node)
 
     def _matches_target(self, function_name: str) -> bool:
@@ -178,4 +184,9 @@ def map_flow(file_path: str, function_name: str) -> dict:
     if not visitor._found:
         return {"error": f"Function '{function_name}' not found in {file_path}"}
         
-    return {"function": function_name, "flow": visitor.flow_tree}
+    return {
+        "function": function_name,
+        "lineno": visitor.lineno,
+        "end_lineno": visitor.end_lineno,
+        "flow": visitor.flow_tree,
+    }
