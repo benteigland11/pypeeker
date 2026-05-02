@@ -1,7 +1,8 @@
 import os
+import sys
 import ast
 import argparse
-from collections import deque
+from collections import deque, Counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
@@ -11,6 +12,66 @@ from pypeeker.commands.common import require_python_file
 
 
 MAX_DEPTH = 5
+
+
+# Built-ins with no observable side effects — pure functions or constructors.
+# Filtered from the default unresolved view because they add no signal.
+_PURE_BUILTINS = frozenset({
+    # Type constructors
+    "int", "str", "float", "bool", "list", "dict", "tuple", "set", "frozenset",
+    "bytes", "bytearray", "complex",
+    # Inspection
+    "isinstance", "issubclass", "hasattr", "getattr", "callable", "id", "type",
+    "vars", "dir", "ascii",
+    # Iteration / collection
+    "iter", "next", "enumerate", "zip", "range", "map", "filter", "reversed",
+    "sorted", "len", "min", "max", "sum", "abs", "round", "pow", "divmod",
+    "all", "any", "slice",
+    # Misc pure
+    "repr", "format", "hash", "hex", "oct", "bin", "chr", "ord",
+    "super", "object", "property", "staticmethod", "classmethod",
+})
+
+# Built-ins with real side effects — surface these, the agent cares.
+_EFFECT_BUILTINS = frozenset({
+    "print", "input", "open", "exit", "quit", "breakpoint",
+    "exec", "eval", "compile",
+    "setattr", "delattr",
+    "__import__",
+})
+
+# Stdlib module roots; populated lazily for Python 3.10+ where the constant exists.
+_STDLIB_MODULES: frozenset = frozenset(getattr(sys, "stdlib_module_names", ()))
+
+# Categories considered "notable" — shown inline by default.
+# (`reason` is tracked separately — depth_limit notable calls get a marker.)
+_NOTABLE_CATEGORIES = frozenset({"effect_builtin", "stdlib", "resolver_gap", "other"})
+
+
+def _classify_unresolved(call: str) -> str:
+    """Categorize a call by its name shape (independent of why we didn't follow it)."""
+    parts = call.split(".")
+    head = parts[0] if parts else ""
+
+    # Bare name (no dots)
+    if len(parts) == 1:
+        if head in _EFFECT_BUILTINS:
+            return "effect_builtin"
+        if head in _PURE_BUILTINS:
+            return "pure_builtin"
+        if head and head[0].isupper() and any(
+            head.endswith(suffix) for suffix in ("Error", "Exception", "Warning", "Interrupt", "Exit")
+        ):
+            return "exception"
+        return "other"
+
+    # Dotted name
+    if head in _STDLIB_MODULES:
+        return "stdlib"
+    if head in ("self", "cls"):
+        # Resolver should have followed this; failing to do so is likely an inheritance gap.
+        return "resolver_gap"
+    return "dispatch"
 
 
 def _file_imports_map(file_path: str, project_root: str) -> Dict[str, str]:
@@ -195,7 +256,11 @@ def _propagate_impact(
         if depth >= max_depth:
             # Past the limit: surface the calls but don't recurse
             for call in result["external"]["calls"]:
-                unresolved.append({"call": call, "in_symbol": sym, "in_path": rel_path, "at_depth": depth, "reason": "depth_limit"})
+                unresolved.append({
+                    "call": call, "in_symbol": sym, "in_path": rel_path,
+                    "at_depth": depth, "reason": "depth_limit",
+                    "category": _classify_unresolved(call),
+                })
             continue
 
         if path not in imports_cache:
@@ -209,7 +274,11 @@ def _propagate_impact(
             if resolved is not None:
                 queue.append((resolved[1], resolved[0], depth + 1))
             else:
-                unresolved.append({"call": call, "in_symbol": sym, "in_path": rel_path, "at_depth": depth, "reason": "unresolved"})
+                unresolved.append({
+                    "call": call, "in_symbol": sym, "in_path": rel_path,
+                    "at_depth": depth, "reason": "unresolved",
+                    "category": _classify_unresolved(call),
+                })
 
     return {
         "function": symbol,
@@ -224,7 +293,7 @@ def _propagate_impact(
     }
 
 
-def _render_propagation_text(data: Dict[str, Any]) -> str:
+def _render_propagation_text(data: Dict[str, Any], show_all_unresolved: bool = False) -> str:
     """Aggregated transitive-surface text view for depth>1 impact results."""
     lines: List[str] = [
         f"# impact: {data['function']}  (depth {data['depth']})",
@@ -261,13 +330,29 @@ def _render_propagation_text(data: Dict[str, Any]) -> str:
                 continue
             seen.add(key)
             uniq.append(u)
-        lines.append("")
-        lines.append(f"unresolved calls ({len(uniq)} unique, not followed):")
-        for u in uniq[:50]:
-            tag = f"[{u['reason']}]"
-            lines.append(f"  {u['call']:<45}  in {u['in_symbol']} (depth {u['at_depth']}) {tag}")
-        if len(uniq) > 50:
-            lines.append(f"  ... and {len(uniq) - 50} more")
+
+        notable = [u for u in uniq if u.get("category") in _NOTABLE_CATEGORIES] if not show_all_unresolved else uniq
+        suppressed = [u for u in uniq if u not in notable]
+
+        if notable:
+            lines.append("")
+            lines.append(f"unresolved (notable, {len(notable)}):")
+            for u in notable[:50]:
+                cat = u.get("category", "other")
+                marker = " *" if u.get("reason") == "depth_limit" else ""
+                tag = f"[{cat}{marker}]"
+                lines.append(f"  {u['call']:<45}  in {u['in_symbol']} (depth {u['at_depth']}) {tag}")
+            if len(notable) > 50:
+                lines.append(f"  ... and {len(notable) - 50} more")
+            if any(u.get("reason") == "depth_limit" for u in notable):
+                lines.append("  * = at depth limit; would be followed if --depth were higher")
+
+        if suppressed and not show_all_unresolved:
+            cats = Counter(u.get("category", "other") for u in suppressed)
+            summary = ", ".join(f"{n} {cat.replace('_', ' ')}" for cat, n in cats.most_common())
+            lines.append("")
+            lines.append(f"unresolved (filtered, {len(suppressed)}): {summary}")
+            lines.append("  pass --show-all-unresolved to see them")
 
     return "\n".join(lines) + "\n"
 
@@ -312,8 +397,10 @@ def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     result = _propagate_impact(symbol, file_path, project_root, depth)
 
     if fmt == "text":
+        show_all = bool(getattr(args, "show_all_unresolved", False))
         return AgentResponse.success(
-            data={"text": _render_propagation_text(result), **{k: v for k, v in result.items() if k != "function"}},
+            data={"text": _render_propagation_text(result, show_all_unresolved=show_all),
+                  **{k: v for k, v in result.items() if k != "function"}},
             meta={"project_root": project_root, "function": result["function"]},
         )
 

@@ -131,7 +131,7 @@ def interfaces(directory: str, ignore: list[str] = None, ignore_tests: bool = Tr
     return cmd_interfaces(args)
 
 @mcp.tool()
-def impact(symbol: str, path: str, depth: int = 1, root: str = None, format: str = "text") -> Dict[str, Any]:
+def impact(symbol: str, path: str, depth: int = 1, root: str = None, format: str = "text", show_all_unresolved: bool = False) -> Dict[str, Any]:
     """
     Analyze the side effects and dependencies (blast radius) of a function.
 
@@ -152,7 +152,7 @@ def impact(symbol: str, path: str, depth: int = 1, root: str = None, format: str
     :param depth: Transitive depth (1 = direct only, max 5). Default 1.
     :param root: Project root for cross-file resolution. Defaults to file's directory.
     """
-    args = Args(symbol=symbol, path=path, depth=depth, root=root, format=format)
+    args = Args(symbol=symbol, path=path, depth=depth, root=root, format=format, show_all_unresolved=show_all_unresolved)
     return cmd_impact(args)
 
 def main() -> None:

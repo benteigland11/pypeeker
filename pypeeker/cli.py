@@ -137,6 +137,7 @@ def main() -> None:
                 {"name": "--depth", "type": int, "default": 1, "help": "Transitive depth (1 = direct only, max 5)"},
                 {"name": "--root", "default": None, "help": "Project root for cross-file resolution (defaults to file's directory)"},
                 {"name": "--format", "choices": ["json", "text"], "default": "text", "help": "Output format for depth>1 propagation results"},
+                {"name": "--show-all-unresolved", "action": "store_true", "dest": "show_all_unresolved", "help": "Show every unresolved call (default: only notable categories — effect builtins, stdlib, resolver gaps)"},
             ],
         },
     ])
