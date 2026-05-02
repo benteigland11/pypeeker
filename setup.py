@@ -4,8 +4,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="pypeeker",
-    version="1.0.1",
+    name="pypeeker-cli",
+    version="1.0.0",
     author="Agent Tools",
     description="A zero-dependency Python CLI toolset designed for AI agents to analyze codebases with surgical precision.",
     long_description=long_description,

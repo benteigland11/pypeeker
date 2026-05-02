@@ -20,7 +20,7 @@ from pypeeker.commands.flow import cmd_flow
 from pypeeker.commands.impact import cmd_impact
 
 # Initialize FastMCP server
-mcp = FastMCP("pypeeker")
+mcp = FastMCP("pypeeker-cli")
 
 class Args:
     """Mock args object to pass to CLI handlers."""

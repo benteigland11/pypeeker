@@ -1,24 +1,24 @@
-# pypeeker: Unified Agent-Native Python Analysis CLI
+# pypeeker-cli: Unified Agent-Native Python Analysis CLI
 
 [![Powered by Cartograph](https://img.shields.io/badge/Powered%20by-Cartograph-orange?style=flat-square)](https://github.com/benteigland11/Cartograph)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml/badge.svg)](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml)
 
-**pypeeker** is a zero-dependency Python CLI toolset designed for AI agents to analyze codebases with surgical precision. It transforms raw source code into structured, actionable logical maps.
+**pypeeker-cli** is a zero-dependency Python CLI toolset designed for AI agents to analyze codebases with surgical precision. It transforms raw source code into structured, actionable logical maps.
 
 ---
 
 ## 🎨 A Cartograph Showcase
 
-pypeeker is a premier showcase for **[Cartograph](https://github.com/benteigland11/Cartograph)**, a platform for **reusable engineering**. 
+pypeeker-cli is a premier showcase for **[Cartograph](https://github.com/benteigland11/Cartograph)**, a platform for **reusable engineering**. 
 
-Every core feature in pypeeker—from AST parsing to graph cycle detection—is implemented as a standalone, validated **Cartograph widget**. This architecture ensures that pypeeker is not just a tool, but a modular assembly of hardened building blocks that can be easily extended or repurposed.
+Every core feature in pypeeker-cli—from AST parsing to graph cycle detection—is implemented as a standalone, validated **Cartograph widget**. This architecture ensures that pypeeker-cli is not just a tool, but a modular assembly of hardened building blocks that can be easily extended or repurposed.
 
 ---
 
 ## 🔭 Analysis Surface Area
 
-pypeeker categorizes its tools by **Analysis Surface Area**, allowing agents to choose the right depth for their task:
+pypeeker-cli categorizes its tools by **Analysis Surface Area**, allowing agents to choose the right depth for their task:
 
 ### 1. Project Scan (Horizontal)
 Broad audits of the entire project tree to find relationships and hazards.
