@@ -23,16 +23,6 @@ jobs:
         pip install mcp pytest pytest-cov
         pip install -e .
         
-    - name: Run Widget Tests
+    - name: Run Tests
       run: |
-        # Run tests for each widget individually to avoid 'src' namespace collisions
-        for d in cg/*; do
-          if [ -d "$d/tests" ]; then
-            echo "Running tests for $d..."
-            PYTHONPATH=$PYTHONPATH:$(pwd)/$d pytest $d/tests
-          fi
-        done
-        
-    - name: Run CLI Tests
-      run: |
-        pytest tests/test_cli.py
+        pytest
