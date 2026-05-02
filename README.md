@@ -38,6 +38,58 @@ Surgical analysis inside a specific file or function.
 
 ---
 
+## Tool Showcase
+
+pypeeker transforms dense Python source into structured, machine-first intelligence.
+
+### API Skeleton extraction
+Compress a 500-line file into a surgical map of its signatures and docstrings.
+
+```json
+{
+  "file": "cli.py",
+  "skeleton": {
+    "imports": ["import sys", "import os", "import argparse"],
+    "functions": [
+      {
+        "name": "main",
+        "docstring": "Main entry point for the pypeeker CLI.",
+        "args": [{"name": "args", "type": "argparse.Namespace"}],
+        "returns": "None"
+      }
+    ]
+  }
+}
+```
+
+### Logical Flow mapping
+View the branching logic and external calls of a function without reading the implementation boilerplate.
+
+```json
+{
+  "function": "main",
+  "flow": [
+    { "line": 77, "type": "call", "value": "cli.add_commands('Project Scan', [...])" },
+    { "line": 143, "type": "call", "value": "cli.run()" }
+  ]
+}
+```
+
+### Granular Impact analysis
+Identify exactly which class attributes or globals a function modifies before refactoring.
+
+```json
+{
+  "function": "save",
+  "external": {
+    "writes": ["self.updated_at", "self.status"],
+    "calls": ["db.commit", "logging.info"]
+  }
+}
+```
+
+---
+
 ## Installation
 
 Install pypeeker-cli globally using pip:
