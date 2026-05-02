@@ -14,9 +14,9 @@ token-efficient structured answers. So your agent can navigate, reason about,
 and refactor Python without reading whole files.
 
 > **Read-only by design.** pypeeker never edits, renames, or rewrites your
-> code. There is no `--apply`, no `--fix`, no auto-refactor. Every command
-> answers a question about the codebase; the agent acts on the answer. This
-> is a hard boundary, not a roadmap gap.
+> code. No `apply`, no `fix`, no auto-refactor surface. Every tool answers a
+> question about the codebase; the agent acts on the answer. This is a hard
+> boundary, not a roadmap gap.
 
 ---
 
@@ -28,24 +28,24 @@ Every core feature in pypeeker-cli, from AST parsing to graph cycle detection, i
 
 ---
 
-## Analysis Surface Area
+## What the agent gets
 
-pypeeker-cli categorizes its tools by Analysis Surface Area, allowing agents to choose the right depth for their task:
+Tools available to your agent over MCP, grouped by analysis depth:
 
-### 1. Project Scan (Horizontal)
-Broad audits of the entire project tree to find relationships and hazards.
-*   **circular**: Find import dependency loops (identifies runtime crashes vs safe TYPE_CHECKING cycles).
-*   **missing**: Detect hallucinated or missing internal imports using Dynamic Root Discovery.
-*   **interfaces**: Validate code contracts (flags missing docstrings and type hints; tests are ignored by default, use `--include-tests` to opt in).
+### Project scan (horizontal)
+Broad audits of the entire project tree.
+*   **`circular`** — Import dependency loops (distinguishes runtime crashes from safe `TYPE_CHECKING` cycles). Includes a hub ranking so the agent knows which file is the gravitational center of an import tangle.
+*   **`missing`** — Hallucinated or broken internal imports.
+*   **`interfaces`** — Missing docstrings and type hints across a project.
 
-### 2. Navigation (Relationship)
+### Navigation (relationship)
 Pinpoint and trace symbols across file boundaries.
-*   **locate**: Find a symbol's exact definition bounds (start/end lines) or trace its usages (`--usages`) and ancestry (`--inherited`).
+*   **`locate`** — A symbol's exact definition bounds (start/end lines), its usages (`usages=True`), or its class ancestry (`inherited=True`).
 
-### 3. Deep Dive (Vertical)
+### Deep dive (vertical)
 Surgical analysis inside a specific file or function.
-*   **skeleton**: Extract the API surface of a file (imports, classes, variables, signatures) without function bodies.
-*   **impact**: Analyze the blast radius of a function, distinguishing between internal and external side effects.
+*   **`skeleton`** — The API surface of a file (imports, classes, variables, signatures) without function bodies. Includes line ranges so the agent can targeted-read.
+*   **`impact`** — Side-effect map of a function: what it calls, reads, writes, and modifies. Optional `depth=N` walks the call graph transitively for refactor-safety analysis.
 
 ---
 
@@ -66,12 +66,13 @@ real, well-known library — to answer a real agent question:
 
 ### Map the file — `skeleton`
 
-Strip every function body. Keep imports, signatures, docstrings, and the line
-range each symbol occupies.
+The agent calls `skeleton` over MCP. The tool strips every function body and
+returns imports, signatures, docstrings, and the line range each symbol
+occupies.
 
-```bash
-$ pypeeker skeleton requests/sessions.py --format stub
-```
+> Agent invokes: `skeleton(path="requests/sessions.py")`
+> Returns:
+
 ```python
 import os
 import time
@@ -98,13 +99,13 @@ visible with their exact line ranges.
 
 ### Trace what a function touches — `impact`
 
-Once you've found the function, the next agent question is usually *"what
+Once the agent has found the function, the next question is usually *"what
 does this affect?"* — globals, class state, external calls. Reading the body
 to find out is the manual approach. `impact` answers structurally:
 
-```bash
-$ pypeeker impact SessionRedirectMixin.rebuild_auth requests/sessions.py
-```
+> Agent invokes: `impact(symbol="SessionRedirectMixin.rebuild_auth", path="requests/sessions.py")`
+> Returns:
+
 ```json
 {
   "external": {
@@ -127,16 +128,16 @@ in one call instead of a multi-pass read.
 (`SessionRedirectMixin.rebuild_auth`) for unambiguous targeting when multiple
 classes share method names.
 
-#### `--depth N`: transitive blast radius across files
+#### `depth=N`: transitive blast radius across files
 
 The harder refactor question is *"if I change this method's contract, what's
-the cascade?"* — that's what your callees touch, and what their callees touch,
-and so on. `--depth N` walks the call graph up to N levels (max 5), aggregates
+the cascade?"* — that's what its callees touch, and what their callees touch,
+and so on. `depth=N` walks the call graph up to N levels (max 5), aggregates
 every external write, global mutation, and reached symbol into one answer:
 
-```bash
-$ pypeeker impact ChatService.process_message backend/services/chat_service.py --depth 2 --root .
-```
+> Agent invokes: `impact(symbol="ChatService.process_message", path="backend/services/chat_service.py", depth=2, root=".")`
+> Returns:
+
 ```
 # impact: ChatService.process_message  (depth 2)
 
@@ -152,9 +153,15 @@ reached symbols:
   depth 1  schedule_summary_update          backend/summary_updater.py
   ... (29 more)
 
-unresolved calls (379 unique, not followed):
-  obj.method                         in ChatService.process_message [unresolved]
-  ... (built-ins, dynamic dispatch)
+unresolved (notable, 63):
+  print                          in ChatService.process_message [effect_builtin]
+  asyncio.create_task            in ChatService.process_message [stdlib]
+  re.search                      in ChatService.process_message [stdlib]
+  hashlib.md5                    in ChatService.process_message [stdlib]
+  json.dumps                     in ChatService.process_message [stdlib]
+  ...
+
+unresolved (filtered, 316): 265 dispatch, 48 pure builtin, 3 exception
 ```
 
 A 2,805-line method that calls into 32 other functions transitively mutates
@@ -165,7 +172,7 @@ flagged so the agent knows where its view is incomplete.
 **Static resolution only.** `self.X`, `Class.X`, and statically-imported
 names are followed. Dynamic dispatch (`obj.method()` where `obj`'s type is
 inferred at runtime) is reported as `unresolved`, not silently followed.
-Cycle-safe (visited-set deduplication). Project-bounded via `--root`.
+Cycle-safe (visited-set deduplication). Project-bounded via the `root` parameter.
 
 ### The token math
 
@@ -199,28 +206,23 @@ line range — in one call.
 - **`missing`** — detect hallucinated or broken internal imports.
 - **`interfaces`** — flag missing docstrings and type annotations across a project.
 
-All tools default to condensed text/stub output over MCP. Pass `--format json`
-on the CLI for structured output suitable for `jq` and downstream tooling.
+All tools default to condensed text/stub output for the agent. Every tool
+also accepts `format="json"` for structured payloads when an agent needs
+to navigate fields programmatically.
 
 ---
 
-## Installation
+## Install
 
-Install the pypeeker-cli core primitive globally using pip:
+Two steps: install the package, then register it with your agent. The
+package ships an MCP server (`pypeeker mcp`); your agent connects to that
+server and gets the tools described above.
 
 ```bash
 pip install pypeeker-cli
 ```
 
-This provides the `pypeeker` command on your system path.
-
----
-
-## Agent Native Integration
-
-pypeeker-cli is designed to be consumed by AI agents via the Model Context Protocol (MCP). After installing the CLI, you can integrate it into your agent of choice.
-
-### Integration Methods
+After install, register with whichever agent you use:
 
 #### Gemini CLI
 Install as a native extension:
