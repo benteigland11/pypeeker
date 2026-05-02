@@ -63,10 +63,11 @@ class AgentCLI:
     """Declarative CLI builder that produces agent-friendly JSON output."""
 
     def __init__(self, prog: str, description: str = "", version: str = "",
-                 colors: dict | None = None):
+                 colors: dict | None = None, epilog: str = ""):
         self.prog = prog
         self.description = description
         self.version = version
+        self.epilog = epilog
         self._groups: list[tuple[str, list[dict]]] = []
         self.colors = colors or {}
         # colors dict:
@@ -89,6 +90,8 @@ class AgentCLI:
         parser = argparse.ArgumentParser(
             prog=self.prog,
             description=self.description,
+            epilog=self.epilog or None,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
             usage=argparse.SUPPRESS,
             add_help=False,
         )
@@ -175,6 +178,9 @@ class AgentCLI:
         hint_c = group_colors[0] if group_colors else ""
         lines.append(f"  Run '{hint_c}{self.prog} <command> -h{r}' for command-specific help.")
         lines.append("")
+        if self.epilog:
+            lines.append(self.epilog)
+            lines.append("")
         return "\n".join(lines)
 
     def run(self, argv: list[str] = None) -> None:

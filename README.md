@@ -252,6 +252,10 @@ The server is pre-configured via `.windsurf/mcp_config.json`.
 #### Claude Desktop and Aider
 Copy the JSON from `claude_desktop_snippet.json` into your global `claude_desktop_config.json`.
 
+### Update notifications
+
+When the MCP server starts, it checks PyPI once per session (cached 24h, 2-second timeout, fail-quiet) for a newer release. If your installed version is stale, agents see a one-line `pip install -U pypeeker-cli` notice prepended to the server instructions; up-to-date sessions see nothing. Set `PYPEEKER_CLI_NO_VERSION_CHECK=1` to disable the check entirely (e.g. on airgapped networks).
+
 ---
 
 ## Reusable Core

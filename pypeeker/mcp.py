@@ -1,6 +1,5 @@
 import os
 import sys
-import subprocess
 from typing import Any, Dict, Literal, Optional
 
 # Add repo root to path so we can import local packages before installation.
@@ -8,7 +7,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.exists(BASE_DIR) and BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from mcp.server.fastmcp import FastMCP
+from cg.infra_mcp_server_readiness_python.src.mcp_server_readiness import (
+    make_server,
+    run_cli_in_process,
+)
 from pypeeker.commands.circular import cmd_circular
 from pypeeker.commands.missing import cmd_missing
 from pypeeker.commands.skeleton import cmd_skeleton
@@ -16,7 +18,11 @@ from pypeeker.commands.locate import cmd_locate
 from pypeeker.commands.interfaces import cmd_interfaces
 from pypeeker.commands.impact import cmd_impact
 
-mcp = FastMCP("pypeeker-cli")
+_INSTRUCTIONS = """\
+Project config: pyproject.toml [tool.pypeeker] ignore = ["custom_dir", ...] adds to the default skip list (venv, __pycache__, dist, node_modules, .mypy_cache, .tox, build). Active skip_list returned in audit response meta. Use cli(command="<tool>", args=["--include-deps", ...]) to scan into venvs/build artifacts.
+"""
+
+mcp = make_server(name="pypeeker-cli", pkg_name="pypeeker-cli", instructions=_INSTRUCTIONS)
 
 
 class _Args:
@@ -87,17 +93,7 @@ def peek(
 @mcp.tool()
 def cli(command: str, args: Optional[list[str]] = None) -> Dict[str, Any]:
     """Escape hatch: run an arbitrary `pypeeker <command> <args>` and return its raw stdout. For power flags not exposed by audit/peek (e.g. --include-deps, --ignore custom_dir, --format json on tools that default to text)."""
-    full_cmd = ["pypeeker", command] + (args or [])
-    try:
-        result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=120)
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "error": {"message": "pypeeker command timed out (120s)", "code": "TIMEOUT"}}
-    except FileNotFoundError:
-        return {"status": "error", "error": {"message": "pypeeker binary not on PATH", "code": "NOT_INSTALLED"}}
-    return {
-        "status": "success" if result.returncode == 0 else "error",
-        "data": {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.returncode},
-    }
+    return run_cli_in_process("pypeeker", command, args)
 
 
 def main() -> None:

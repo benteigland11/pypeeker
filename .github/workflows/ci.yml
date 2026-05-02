@@ -8,21 +8,54 @@ on:
 
 jobs:
   test:
+    name: Unit tests (editable install)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install mcp pytest pytest-cov
         pip install -e .
-        
-    - name: Run Tests
+
+    - name: Run tests (project + widgets)
       run: |
-        pytest
+        pytest pypeeker cg
+
+  wheel-smoke-test:
+    name: Wheel install smoke test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Build wheel
+      run: |
+        python -m pip install --upgrade pip build
+        python -m build --wheel
+
+    - name: Install from wheel into clean env
+      run: |
+        python -m venv /tmp/smoke
+        /tmp/smoke/bin/pip install dist/pypeeker_cli-*.whl
+
+    - name: Verify CLI entry point
+      run: |
+        /tmp/smoke/bin/pypeeker --version
+        /tmp/smoke/bin/pypeeker --help | grep -q PYPEEKER_CLI_NO_VERSION_CHECK
+
+    - name: Verify MCP server imports (widget path resolves)
+      env:
+        PYPEEKER_CLI_NO_VERSION_CHECK: "1"
+      run: |
+        /tmp/smoke/bin/python -c "from pypeeker.mcp import mcp; assert mcp._mcp_server.version, 'serverInfo.version not populated'; print('serverInfo.version:', mcp._mcp_server.version)"

@@ -1,6 +1,12 @@
 import sys
 import os
 import argparse
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+try:
+    __version__ = _pkg_version("pypeeker-cli")
+except PackageNotFoundError:
+    __version__ = "0.0.0+local"
 
 # Add repo root to path if running locally (not installed)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,7 +46,12 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.5.0"
+        version=__version__,
+        epilog=(
+            "Environment variables:\n"
+            "  PYPEEKER_CLI_NO_VERSION_CHECK=1   "
+            "Disable the once-daily PyPI staleness check performed by the MCP server at boot."
+        ),
     )
     
     # Common arguments for analysis commands
