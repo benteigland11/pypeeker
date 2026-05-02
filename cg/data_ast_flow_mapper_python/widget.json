@@ -2,7 +2,7 @@
   "meta": {
     "id": "data-ast-flow-mapper-python",
     "name": "Ast Flow Mapper",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "domain": "data",
     "tags": [
       "ast",
@@ -25,7 +25,7 @@
   },
   "validation": {
     "engine_version": 1,
-    "validated_at": "2026-05-02T06:55:58.387400+00:00",
+    "validated_at": "2026-05-02T08:29:19.708005+00:00",
     "runtime": "python 3.13.13"
   }
 }

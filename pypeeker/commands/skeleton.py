@@ -1,10 +1,10 @@
 import os
 import argparse
 from typing import Any, Dict
-from universal_agent_response_python.src.agent_response import AgentResponse
-from universal_list_paginator_python.src.list_paginator import paginate
-from data_file_walker_python.src.file_walker import walk_python_files
-from data_ast_skeleton_parser_python.src.ast_skeleton_parser import parse_skeleton
+from cg.universal_agent_response_python.src.agent_response import AgentResponse
+from cg.data_file_walker_python.src.file_walker import walk_python_files
+from cg.data_ast_skeleton_parser_python.src.ast_skeleton_parser import parse_skeleton
+from pypeeker.commands.common import paginated_success, relative_file, require_python_file
 
 def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'skeleton' command."""
@@ -17,8 +17,9 @@ def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
     is_single_file = False
     
     if os.path.isfile(target_path):
-        if not target_path.endswith('.py'):
-            return AgentResponse.error("Target is a file but not a .py file.", code="INVALID_FILE_TYPE")
+        error = require_python_file(target_path)
+        if error:
+            return error
         files_to_process.append(target_path)
         is_single_file = True
     else:
@@ -30,13 +31,13 @@ def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
         skel = parse_skeleton(file)
         if "error" in skel:
             skeletons.append({
-                "file": os.path.relpath(file, target_path) if not is_single_file else os.path.basename(file),
+                "file": relative_file(file, target_path, is_single_file),
                 "absolute_path": file,
                 "error": skel["error"]
             })
         else:
             skeletons.append({
-                "file": os.path.relpath(file, target_path) if not is_single_file else os.path.basename(file),
+                "file": relative_file(file, target_path, is_single_file),
                 "absolute_path": file,
                 "skeleton": skel
             })
@@ -48,20 +49,12 @@ def cmd_skeleton(args: argparse.Namespace) -> Dict[str, Any]:
             meta={"root_directory": os.path.dirname(target_path)}
         )
 
-    # Paginate for directories
-    pagination = paginate(skeletons, page=args.page, size=args.size)
-    
-    return AgentResponse.success(
-        data=pagination["items"],
+    return paginated_success(
+        skeletons,
+        page=args.page,
+        size=args.size,
         meta={
             "root_directory": target_path,
-            "total_files": pagination["total"],
-            "pagination": {
-                "page": pagination["page"],
-                "size": pagination["size"],
-                "total_pages": pagination["total_pages"],
-                "has_next": pagination["has_next"],
-                "has_prev": pagination["has_prev"]
-            }
+            "total_files": len(skeletons),
         }
     )

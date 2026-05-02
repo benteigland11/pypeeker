@@ -6,18 +6,28 @@ class FlowVisitor(ast.NodeVisitor):
         self.target_name = target_name
         self.flow_tree = []
         self._found = False
+        self._class_stack = []
+
+    def visit_ClassDef(self, node: ast.ClassDef):
+        self._class_stack.append(node.name)
+        self.generic_visit(node)
+        self._class_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        if node.name == self.target_name:
+        if self._matches_target(node.name):
             self._found = True
             self.flow_tree = self.map_body(node.body)
         self.generic_visit(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-        if node.name == self.target_name:
+        if self._matches_target(node.name):
             self._found = True
             self.flow_tree = self.map_body(node.body)
         self.generic_visit(node)
+
+    def _matches_target(self, function_name: str) -> bool:
+        full_name = ".".join([*self._class_stack, function_name])
+        return self.target_name in {function_name, full_name}
 
     def map_body(self, body: List[ast.stmt]) -> List[dict]:
         nodes = []
@@ -28,7 +38,10 @@ class FlowVisitor(ast.NodeVisitor):
         return nodes
 
     def map_node(self, node: ast.AST) -> Optional[dict]:
-        base_info = {"line": getattr(node, "lineno", None)}
+        base_info = {
+            "line": getattr(node, "lineno", None),
+            "end_line": getattr(node, "end_lineno", None),
+        }
         
         if isinstance(node, ast.If):
             return {
@@ -44,14 +57,16 @@ class FlowVisitor(ast.NodeVisitor):
                 "type": "for",
                 "target": ast.unparse(node.target),
                 "iter": ast.unparse(node.iter),
-                "body": self.map_body(node.body)
+                "body": self.map_body(node.body),
+                "orelse": self.map_body(node.orelse) if node.orelse else []
             }
         elif isinstance(node, (ast.While)):
             return {
                 **base_info,
                 "type": "while",
                 "test": ast.unparse(node.test),
-                "body": self.map_body(node.body)
+                "body": self.map_body(node.body),
+                "orelse": self.map_body(node.orelse) if node.orelse else []
             }
         elif isinstance(node, ast.Try):
             return {
@@ -63,9 +78,11 @@ class FlowVisitor(ast.NodeVisitor):
                         "type": "except",
                         "name": ast.unparse(h.type) if h.type else "Exception",
                         "line": getattr(h, "lineno", None),
+                        "end_line": getattr(h, "end_lineno", None),
                         "body": self.map_body(h.body)
                     } for h in node.handlers
                 ],
+                "orelse": self.map_body(node.orelse) if node.orelse else [],
                 "finalbody": self.map_body(node.finalbody) if node.finalbody else []
             }
         elif isinstance(node, (ast.With, ast.AsyncWith)):
@@ -86,6 +103,7 @@ class FlowVisitor(ast.NodeVisitor):
                         "pattern": ast.unparse(c.pattern),
                         "guard": ast.unparse(c.guard) if c.guard else None,
                         "line": getattr(c.pattern, "lineno", None),
+                        "end_line": getattr(c.pattern, "end_lineno", None),
                         "body": self.map_body(c.body)
                     } for c in node.cases
                 ]
@@ -94,6 +112,19 @@ class FlowVisitor(ast.NodeVisitor):
             return {**base_info, "type": "return", "value": ast.unparse(node.value) if node.value else None}
         elif isinstance(node, (ast.Raise)):
             return {**base_info, "type": "raise", "exc": ast.unparse(node.exc) if node.exc else None}
+        elif isinstance(node, ast.Delete):
+            return {**base_info, "type": "delete", "targets": [ast.unparse(target) for target in node.targets]}
+        elif isinstance(node, ast.Assert):
+            return {
+                **base_info,
+                "type": "assert",
+                "test": ast.unparse(node.test),
+                "msg": ast.unparse(node.msg) if node.msg else None,
+            }
+        elif isinstance(node, ast.Break):
+            return {**base_info, "type": "break"}
+        elif isinstance(node, ast.Continue):
+            return {**base_info, "type": "continue"}
         elif isinstance(node, (ast.Yield, ast.YieldFrom)):
             return {**base_info, "type": "yield", "value": ast.unparse(node.value) if node.value else None}
         elif isinstance(node, ast.Expr):
@@ -102,6 +133,29 @@ class FlowVisitor(ast.NodeVisitor):
                 return {**base_info, "type": "call", "value": ast.unparse(inner)}
             if isinstance(inner, (ast.Yield, ast.YieldFrom)):
                 return {**base_info, "type": "yield", "value": ast.unparse(inner.value) if inner.value else None}
+            if isinstance(inner, (ast.Attribute, ast.Subscript, ast.Name, ast.Await)):
+                return {**base_info, "type": "access", "value": ast.unparse(inner)}
+        elif isinstance(node, ast.Assign):
+            return {
+                **base_info,
+                "type": "assign",
+                "target": ", ".join(ast.unparse(target) for target in node.targets),
+                "value": ast.unparse(node.value),
+            }
+        elif isinstance(node, ast.AnnAssign):
+            return {
+                **base_info,
+                "type": "assign",
+                "target": ast.unparse(node.target),
+                "value": ast.unparse(node.value) if node.value else None,
+            }
+        elif isinstance(node, ast.AugAssign):
+            return {
+                **base_info,
+                "type": "assign",
+                "target": ast.unparse(node.target),
+                "value": f"{ast.unparse(node.target)} {type(node.op).__name__}= {ast.unparse(node.value)}",
+            }
         elif isinstance(node, ast.Call):
              return {**base_info, "type": "call", "value": ast.unparse(node)}
         

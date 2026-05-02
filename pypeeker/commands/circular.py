@@ -1,11 +1,11 @@
 import os
 import argparse
 from typing import Any, Dict
-from universal_agent_response_python.src.agent_response import AgentResponse
-from universal_list_paginator_python.src.list_paginator import paginate
-from data_file_walker_python.src.file_walker import walk_python_files
-from data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
-from universal_graph_cycles_python.src.graph_cycles import find_cycles
+from cg.universal_agent_response_python.src.agent_response import AgentResponse
+from cg.data_file_walker_python.src.file_walker import walk_python_files
+from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
+from cg.universal_graph_cycles_python.src.graph_cycles import find_cycles
+from pypeeker.commands.common import paginated_success
 
 def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'circular' command."""
@@ -21,7 +21,10 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
     # 2. Parse imports and build graph
     graph = {}
     for file in files:
-        imports = parse_imports(file)
+        try:
+            imports = parse_imports(file)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            imports = []
         neighbors = []
         for mod_name, line, is_rel, level, is_tc in imports:
             resolved, reason = resolve_import(mod_name, file, root_dir, is_rel, level)
@@ -52,20 +55,12 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
             "is_type_only": is_type_only_cycle
         })
     
-    # 5. Paginating
-    pagination = paginate(formatted_cycles, page=args.page, size=args.size)
-    
-    return AgentResponse.success(
-        data=pagination["items"],
+    return paginated_success(
+        formatted_cycles,
+        page=args.page,
+        size=args.size,
         meta={
             "root_directory": root_dir,
-            "total_cycles": pagination["total"],
-            "pagination": {
-                "page": pagination["page"],
-                "size": pagination["size"],
-                "total_pages": pagination["total_pages"],
-                "has_next": pagination["has_next"],
-                "has_prev": pagination["has_prev"]
-            }
+            "total_cycles": len(formatted_cycles),
         }
     )

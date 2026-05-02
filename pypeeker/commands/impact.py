@@ -3,6 +3,7 @@ import argparse
 from typing import Any, Dict
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_ast_impact_analyzer_python.src.ast_impact_analyzer import analyze_impact
+from pypeeker.commands.common import require_python_file
 
 def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'impact' command."""
@@ -14,6 +15,10 @@ def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     
     if not os.path.isfile(file_path):
         return AgentResponse.error("Target must be a file, not a directory.", code="INVALID_TARGET")
+
+    error = require_python_file(file_path)
+    if error:
+        return error
 
     result = analyze_impact(file_path, symbol)
     

@@ -3,6 +3,7 @@ import argparse
 from typing import Any, Dict
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_ast_flow_mapper_python.src.ast_flow_mapper import map_flow
+from pypeeker.commands.common import require_python_file
 
 def cmd_flow(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'flow' command."""
@@ -14,6 +15,10 @@ def cmd_flow(args: argparse.Namespace) -> Dict[str, Any]:
     
     if not os.path.isfile(file_path):
         return AgentResponse.error("Target must be a file, not a directory.", code="INVALID_TARGET")
+
+    error = require_python_file(file_path)
+    if error:
+        return error
 
     result = map_flow(file_path, symbol)
     

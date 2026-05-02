@@ -1,10 +1,10 @@
 import os
 import argparse
 from typing import Any, Dict
-from universal_agent_response_python.src.agent_response import AgentResponse
-from universal_list_paginator_python.src.list_paginator import paginate
-from data_file_walker_python.src.file_walker import walk_python_files
-from data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
+from cg.universal_agent_response_python.src.agent_response import AgentResponse
+from cg.data_file_walker_python.src.file_walker import walk_python_files
+from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
+from pypeeker.commands.common import paginated_success
 
 def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'missing' command."""
@@ -20,7 +20,10 @@ def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
     # 2. Parse imports and find 'not_found' ones
     missing_imports = []
     for file in files:
-        imports = parse_imports(file)
+        try:
+            imports = parse_imports(file)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            imports = []
         for mod_name, line, is_rel, level, is_tc in imports:
             _, reason = resolve_import(mod_name, file, root_dir, is_rel, level)
             if reason == "not_found":
@@ -32,20 +35,12 @@ def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
                     "absolute_path": file
                 })
     
-    # 3. Paginating
-    pagination = paginate(missing_imports, page=args.page, size=args.size)
-    
-    return AgentResponse.success(
-        data=pagination["items"],
+    return paginated_success(
+        missing_imports,
+        page=args.page,
+        size=args.size,
         meta={
             "root_directory": root_dir,
-            "total_missing": pagination["total"],
-            "pagination": {
-                "page": pagination["page"],
-                "size": pagination["size"],
-                "total_pages": pagination["total_pages"],
-                "has_next": pagination["has_next"],
-                "has_prev": pagination["has_prev"]
-            }
+            "total_missing": len(missing_imports),
         }
     )

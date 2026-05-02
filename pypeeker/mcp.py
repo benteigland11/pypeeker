@@ -1,14 +1,11 @@
 import os
 import sys
-import json
 from typing import Any, Dict
 
-# Add root and cg/ to path so we can import the src and widgets
+# Add repo root to path so we can import local packages before installation.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CG_DIR = os.path.join(BASE_DIR, 'cg')
-for d in [BASE_DIR, CG_DIR]:
-    if os.path.exists(d) and d not in sys.path:
-        sys.path.append(d)
+if os.path.exists(BASE_DIR) and BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
 
 from mcp.server.fastmcp import FastMCP
 from pypeeker.commands.circular import cmd_circular
@@ -101,7 +98,7 @@ def locate(symbol: str, path: str, usages: bool = False, inherited: bool = False
     return cmd_locate(args)
 
 @mcp.tool()
-def interfaces(directory: str, ignore: list[str] = None, page: int = 1, size: int = 20) -> Dict[str, Any]:
+def interfaces(directory: str, ignore: list[str] = None, ignore_tests: bool = True, page: int = 1, size: int = 20) -> Dict[str, Any]:
     """
     Identify documentation and typing gaps in a project's code interfaces.
     
@@ -110,10 +107,11 @@ def interfaces(directory: str, ignore: list[str] = None, page: int = 1, size: in
     
     :param directory: Root directory to scan recursively.
     :param ignore: Optional list of directories to ignore.
+    :param ignore_tests: Exclude files inside test directories and test_*.py files (default true).
     :param page: Results page number (default 1).
     :param size: Number of interface gaps per page (default 20).
     """
-    args = Args(directory=directory, ignore=ignore, page=page, size=size)
+    args = Args(directory=directory, ignore=ignore, ignore_tests=ignore_tests, page=page, size=size)
     return cmd_interfaces(args)
 
 @mcp.tool()

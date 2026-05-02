@@ -1,17 +1,14 @@
 import sys
 import os
 import argparse
-from typing import Any, Dict
 
-# Add root and cg/ to path if running locally (not installed)
+# Add repo root to path if running locally (not installed)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CG_DIR = os.path.join(BASE_DIR, 'cg')
-for d in [BASE_DIR, CG_DIR]:
-    if os.path.exists(d) and d not in sys.path:
-        sys.path.append(d)
+if os.path.exists(BASE_DIR) and BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
 
 try:
-    from cg_infra_agent_cli_python.src.agent_cli import AgentCLI
+    from cg.cg_infra_agent_cli_python.src.agent_cli import AgentCLI
     from pypeeker.commands.circular import cmd_circular
     from pypeeker.commands.missing import cmd_missing
     from pypeeker.commands.skeleton import cmd_skeleton
@@ -44,7 +41,7 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.0.0"
+        version="1.1.0"
     )
     
     # Common arguments for analysis commands
@@ -53,6 +50,16 @@ def main() -> None:
         {"name": "--ignore", "nargs": "*", "help": "Directories to ignore", "default": []},
         {"name": "--page", "type": int, "default": 1, "help": "Page number"},
         {"name": "--size", "type": int, "default": 20, "help": "Page size"},
+    ]
+
+    interface_args = analysis_args + [
+        {
+            "name": "--include-tests",
+            "action": "store_false",
+            "dest": "ignore_tests",
+            "default": True,
+            "help": "Include files inside test directories and test_*.py files",
+        },
     ]
     
     # Arguments for path-based commands
@@ -91,7 +98,7 @@ def main() -> None:
             "name": "interfaces",
             "help": "Scan for documentation and typing gaps in code interfaces",
             "handler": cmd_interfaces,
-            "args": analysis_args,
+            "args": interface_args,
         },
     ])
 

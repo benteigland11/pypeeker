@@ -1,24 +1,26 @@
 import os
 import argparse
-from typing import Any, Dict, List
+from typing import Any, Dict
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
-from cg.universal_list_paginator_python.src.list_paginator import paginate
 from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_symbol_locator_python.src.ast_symbol_locator import locate_symbol
+from pypeeker.commands.common import paginated_success, relative_file, require_python_file
 
 def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'locate' command."""
     target_path = os.path.abspath(args.path)
     symbol = args.symbol
+    is_single_file = os.path.isfile(target_path)
     
     if not os.path.exists(target_path):
         return AgentResponse.error(f"{target_path} does not exist.", code="PATH_NOT_FOUND")
 
     files_to_process = []
     
-    if os.path.isfile(target_path):
-        if not target_path.endswith('.py'):
-            return AgentResponse.error("Target is a file but not a .py file.", code="INVALID_FILE_TYPE")
+    if is_single_file:
+        error = require_python_file(target_path)
+        if error:
+            return error
         files_to_process.append(target_path)
     else:
         ignore = args.ignore if args.ignore else []
@@ -27,6 +29,7 @@ def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
     mode = "usage" if getattr(args, "usages", False) else "definition"
     inherited = getattr(args, "inherited", False)
     all_matches = []
+    definition_cache = {}
     
     for file in files_to_process:
         matches = locate_symbol(file, symbol, mode=mode)
@@ -36,7 +39,7 @@ def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
             continue # Skip files we can't parse
             
         for match in matches:
-            match["file"] = os.path.relpath(file, target_path) if not os.path.isfile(target_path) else os.path.basename(file)
+            match["file"] = relative_file(file, target_path, is_single_file)
             match["absolute_path"] = file
             
             # Ancestry resolution
@@ -45,33 +48,29 @@ def cmd_locate(args: argparse.Namespace) -> Dict[str, Any]:
                 for base_name in match["bases"]:
                     # Secondary search for each base class name across all files
                     for search_file in files_to_process:
-                        base_matches = locate_symbol(search_file, base_name, mode="definition")
+                        cache_key = (search_file, base_name)
+                        if cache_key not in definition_cache:
+                            definition_cache[cache_key] = locate_symbol(search_file, base_name, mode="definition")
+                        base_matches = definition_cache[cache_key]
                         if base_matches and "error" in base_matches[0]:
                             continue
                         for bm in base_matches:
                             if bm["type"] == "class":
-                                bm["file"] = os.path.relpath(search_file, target_path) if not os.path.isfile(target_path) else os.path.basename(search_file)
-                                bm["absolute_path"] = search_file
-                                ancestors.append(bm)
+                                ancestor = dict(bm)
+                                ancestor["file"] = relative_file(search_file, target_path, is_single_file)
+                                ancestor["absolute_path"] = search_file
+                                ancestors.append(ancestor)
                 match["ancestors"] = ancestors
                 
             all_matches.append(match)
 
-    # Paginate results
-    pagination = paginate(all_matches, page=args.page, size=args.size)
-    
-    return AgentResponse.success(
-        data=pagination["items"],
+    return paginated_success(
+        all_matches,
+        page=args.page,
+        size=args.size,
         meta={
             "root_directory": target_path if os.path.isdir(target_path) else os.path.dirname(target_path),
             "symbol_searched": symbol,
-            "total_matches": pagination["total"],
-            "pagination": {
-                "page": pagination["page"],
-                "size": pagination["size"],
-                "total_pages": pagination["total_pages"],
-                "has_next": pagination["has_next"],
-                "has_prev": pagination["has_prev"]
-            }
+            "total_matches": len(all_matches),
         }
     )

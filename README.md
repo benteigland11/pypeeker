@@ -24,7 +24,7 @@ pypeeker-cli categorizes its tools by Analysis Surface Area, allowing agents to 
 Broad audits of the entire project tree to find relationships and hazards.
 *   **circular**: Find import dependency loops (identifies runtime crashes vs safe TYPE_CHECKING cycles).
 *   **missing**: Detect hallucinated or missing internal imports using Dynamic Root Discovery.
-*   **interfaces**: Validate code contracts (flags missing docstrings and type hints).
+*   **interfaces**: Validate code contracts (flags missing docstrings and type hints; tests are ignored by default, use `--include-tests` to opt in).
 
 ### 2. Navigation (Relationship)
 Pinpoint and trace symbols across file boundaries.
