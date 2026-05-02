@@ -22,18 +22,36 @@ DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset({
 })
 
 
-def resolve_ignore(user_ignore: Optional[Iterable[str]], include_deps: bool = False) -> List[str]:
-    """Merge user-provided ignores with sensible Python defaults.
+def resolve_ignore(user_ignore: Optional[Iterable[str]], include_deps: bool = False, project_root: Optional[str] = None) -> List[str]:
+    """Merge user-provided ignores with defaults and project config.
 
     :param user_ignore: Directories the caller explicitly wants skipped.
-    :param include_deps: If True, skip the default skip list (scan everything,
-                         including venvs, caches, build artifacts).
+    :param include_deps: If True, skip the default skip list (scan everything).
+    :param project_root: If given, also load `[tool.pypeeker]` ignore list from
+                         pyproject.toml (or .pypeeker.toml) in this tree.
     :returns: Final list of directory names to skip during file walking.
     """
     user_set = set(user_ignore) if user_ignore else set()
+
+    if project_root:
+        # Lazy import to avoid a hard dep cycle at module-load time.
+        from pypeeker.config import load_project_config
+        cfg = load_project_config(project_root)
+        user_set.update(cfg.ignore)
+
     if include_deps:
         return sorted(user_set)
     return sorted(user_set | DEFAULT_IGNORE_DIRS)
+
+
+def project_config_summary(project_root: str) -> Dict[str, Any]:
+    """Return a dict describing what config (if any) was applied to this scan."""
+    from pypeeker.config import load_project_config
+    cfg = load_project_config(project_root)
+    return {
+        "config_source": cfg.source,
+        "config_ignore": cfg.ignore,
+    }
 
 
 def pagination_meta(pagination: Dict[str, Any]) -> Dict[str, Any]:

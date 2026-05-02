@@ -28,7 +28,7 @@ def cmd_missing(args: argparse.Namespace) -> Dict[str, Any]:
         return AgentResponse.error(f"{root_dir} is not a directory.", code="DIRECTORY_NOT_FOUND")
 
     # 1. Walk files
-    ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
+    ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False), project_root=root_dir)
     files = walk_python_files(root_dir, ignore_dirs=ignore)
     
     # 2. Parse imports and find 'not_found' ones

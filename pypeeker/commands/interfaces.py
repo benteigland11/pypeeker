@@ -31,7 +31,7 @@ def cmd_interfaces(args: argparse.Namespace) -> Dict[str, Any]:
             return error
         files_to_process.append(target_path)
     else:
-        ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
+        ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False), project_root=target_path)
         files_to_process = walk_python_files(target_path, ignore_dirs=ignore)
 
     if getattr(args, "ignore_tests", True):

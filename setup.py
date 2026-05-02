@@ -23,5 +23,6 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "mcp>=0.1.0",
+        "tomli>=2.0.0; python_version < '3.11'",
     ],
 )

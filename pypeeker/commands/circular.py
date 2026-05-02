@@ -6,7 +6,7 @@ from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_file_walker_python.src.file_walker import walk_python_files
 from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
 from cg.universal_graph_cycles_python.src.graph_cycles import find_cycles
-from pypeeker.commands.common import paginated_success, resolve_ignore
+from pypeeker.commands.common import paginated_success, resolve_ignore, project_config_summary
 
 
 def _compute_hubs(cycles: list[dict], min_appearances: int = 2) -> List[Tuple[str, int]]:
@@ -55,7 +55,7 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
         return AgentResponse.error(f"{root_dir} is not a directory.", code="DIRECTORY_NOT_FOUND")
 
     # 1. Walk files
-    ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False))
+    ignore = resolve_ignore(args.ignore, include_deps=getattr(args, "include_deps", False), project_root=root_dir)
     files = walk_python_files(root_dir, ignore_dirs=ignore)
     
     # 2. Parse imports and build graph
@@ -98,24 +98,24 @@ def cmd_circular(args: argparse.Namespace) -> Dict[str, Any]:
     hubs = _compute_hubs(formatted_cycles)
     hubs_meta = [{"file": f, "cycle_count": n} for f, n in hubs]
     summary_only = bool(getattr(args, "summary_only", False))
+    cfg_summary = project_config_summary(root_dir)
+    base_meta = {
+        "root_directory": root_dir,
+        "total_cycles": len(formatted_cycles),
+        "cycle_hubs": hubs_meta,
+        "skip_list": ignore,
+        **cfg_summary,
+    }
 
     if fmt == "text":
         return AgentResponse.success(
             data={"text": _render_circular_text(formatted_cycles, hubs, summary_only=summary_only)},
-            meta={
-                "root_directory": root_dir,
-                "total_cycles": len(formatted_cycles),
-                "cycle_hubs": hubs_meta,
-            },
+            meta=base_meta,
         )
 
     return paginated_success(
         formatted_cycles,
         page=args.page,
         size=args.size,
-        meta={
-            "root_directory": root_dir,
-            "total_cycles": len(formatted_cycles),
-            "cycle_hubs": hubs_meta,
-        }
+        meta=base_meta,
     )
