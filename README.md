@@ -1,5 +1,6 @@
 # pypeeker-cli: Unified Agent-Native Python Analysis CLI
 
+[![PyPI](https://img.shields.io/pypi/v/pypeeker-cli.svg)](https://pypi.org/project/pypeeker-cli/)
 [![Powered by Cartograph](https://img.shields.io/badge/Powered%20by-Cartograph-orange?style=flat-square)](https://github.com/benteigland11/Cartograph)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml/badge.svg)](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml)
