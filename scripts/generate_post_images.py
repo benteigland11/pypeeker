@@ -83,14 +83,12 @@ def main() -> None:
         {
             "code": SESSION_REQUEST_VIEW,
             "language": "python",
-            "title": "Read sessions.py — Session.request",
-            "subtitle": "92 lines: 17 params, 50-line docstring, 28-line body",
+            "title": "sessions.py from psf/requests",
         },
         {
             "code": impact_text,
             "language": "json",
-            "title": "pypeeker impact Session.request",
-            "subtitle": "what does this touch? — answered structurally, in one call",
+            "title": "pypeeker impact",
         },
     ])
 

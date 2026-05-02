@@ -57,8 +57,9 @@ def audit(
 @mcp.tool()
 def peek(
     path: str,
-    mode: Literal["skeleton", "locate", "usages", "ancestry", "impact"],
+    mode: Literal["skeleton", "locate", "ancestry", "impact"],
     symbol: Optional[str] = None,
+    direction: Literal["both", "in", "out"] = "both",
     depth: int = 1,
     root: Optional[str] = None,
     page: int = 1,
@@ -66,17 +67,16 @@ def peek(
     format: str = "text",
     show_all_unresolved: bool = False,
 ) -> Dict[str, Any]:
-    """File or symbol inspection. mode='skeleton' returns a file/package API surface (symbol unused). 'locate'/'usages'/'ancestry' find a symbol's definition / usages / class parents (symbol required). 'impact' analyzes a function's side effects (symbol required); set depth>1 + root for transitive blast-radius across files."""
+    """File or symbol inspection. mode='skeleton' returns a file/package API surface (symbol unused). 'locate'/'ancestry' find a symbol's definition / class parents (symbol required). 'impact' returns both inbound callers and outbound dependencies for a function (symbol required); use direction='in'|'out' to scope, depth>1 + root for transitive outbound."""
     if mode == "skeleton":
         # skeleton uses 'stub' as its text format; translate uniform 'text' input.
         skel_format = "stub" if format == "text" else format
         return cmd_skeleton(_Args(path=path, page=page, size=size, format=skel_format))
-    if mode in ("locate", "usages", "ancestry"):
+    if mode in ("locate", "ancestry"):
         if not symbol:
             return {"status": "error", "error": {"message": f"mode='{mode}' requires symbol", "code": "MISSING_SYMBOL"}}
         return cmd_locate(_Args(
             symbol=symbol, path=path,
-            usages=(mode == "usages"),
             inherited=(mode == "ancestry"),
             page=page, size=size, format=format,
         ))
@@ -85,6 +85,7 @@ def peek(
             return {"status": "error", "error": {"message": "mode='impact' requires symbol", "code": "MISSING_SYMBOL"}}
         return cmd_impact(_Args(
             symbol=symbol, path=path, depth=depth, root=root,
+            inbound=(direction == "in"), outbound=(direction == "out"),
             format=format, show_all_unresolved=show_all_unresolved,
         ))
     return {"status": "error", "error": {"message": f"Unknown peek mode: {mode}", "code": "BAD_MODE"}}

@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from cg.universal_agent_response_python.src.agent_response import AgentResponse
 from cg.data_ast_impact_analyzer_python.src.ast_impact_analyzer import analyze_impact
 from cg.data_ast_import_parser_python.src.ast_import_parser import parse_imports, resolve_import
-from pypeeker.commands.common import require_python_file
+from cg.data_ast_symbol_locator_python.src.ast_symbol_locator import locate_symbol
+from cg.data_file_walker_python.src.file_walker import walk_python_files
+from pypeeker.commands.common import require_python_file, resolve_ignore
 
 
 MAX_DEPTH = 5
@@ -357,6 +359,30 @@ def _render_propagation_text(data: Dict[str, Any], show_all_unresolved: bool = F
     return "\n".join(lines) + "\n"
 
 
+def _find_inbound_callers(
+    symbol: str,
+    project_root: str,
+    ignore_dirs: List[str],
+) -> List[Dict[str, Any]]:
+    """Walk the project for places that reference the symbol.
+
+    Static name match — for `Class.method`, searches for the rightmost name
+    component (the method) across all project files. False positives are
+    possible (any name collision); the agent can filter.
+    """
+    search_name = symbol.rsplit(".", 1)[-1]
+    matches: List[Dict[str, Any]] = []
+    for f in walk_python_files(project_root, ignore_dirs=ignore_dirs):
+        result = locate_symbol(f, search_name, mode="usage")
+        if result and "error" in result[0]:
+            continue
+        for m in result:
+            m["file"] = os.path.relpath(f, project_root)
+            m["absolute_path"] = f
+            matches.append(m)
+    return matches
+
+
 def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     """Handler for the 'impact' command."""
     file_path = os.path.abspath(args.path)
@@ -366,6 +392,12 @@ def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     fmt = getattr(args, "format", "json") or "json"
     if fmt not in ("json", "text"):
         return AgentResponse.error(f"Unknown format '{fmt}'. Use 'json' or 'text'.", code="BAD_FORMAT")
+
+    # Direction flags: --inbound / --outbound. Neither = both. Both = both.
+    inbound_flag = bool(getattr(args, "inbound", False))
+    outbound_flag = bool(getattr(args, "outbound", False))
+    do_inbound = inbound_flag or not outbound_flag
+    do_outbound = outbound_flag or not inbound_flag
 
     if not os.path.exists(file_path):
         return AgentResponse.error(f"{file_path} does not exist.", code="PATH_NOT_FOUND")
@@ -377,31 +409,83 @@ def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
     if error:
         return error
 
-    if depth == 1:
-        # Preserve original single-shot impact behavior
-        result = analyze_impact(file_path, symbol)
-        if "error" in result:
-            return AgentResponse.error(result["error"], code="IMPACT_ANALYSIS_FAILED")
-        return AgentResponse.success(data=result)
-
-    # Depth > 1: project-aware propagation
     project_root = os.path.abspath(root) if root else os.path.dirname(file_path)
     if not os.path.isdir(project_root):
         return AgentResponse.error(f"Project root '{project_root}' is not a directory.", code="INVALID_ROOT")
 
-    # Verify the symbol exists at the entry point before walking
-    initial = analyze_impact(file_path, symbol)
-    if "error" in initial:
-        return AgentResponse.error(initial["error"], code="IMPACT_ANALYSIS_FAILED")
+    out: Dict[str, Any] = {"function": symbol}
 
-    result = _propagate_impact(symbol, file_path, project_root, depth)
+    # --- Outbound (what this function reaches into) ---
+    if do_outbound:
+        if depth == 1:
+            outbound = analyze_impact(file_path, symbol)
+            if "error" in outbound:
+                return AgentResponse.error(outbound["error"], code="IMPACT_ANALYSIS_FAILED")
+            out["outbound"] = outbound
+        else:
+            initial = analyze_impact(file_path, symbol)
+            if "error" in initial:
+                return AgentResponse.error(initial["error"], code="IMPACT_ANALYSIS_FAILED")
+            out["outbound"] = _propagate_impact(symbol, file_path, project_root, depth)
+
+    # --- Inbound (who calls this function) ---
+    if do_inbound:
+        ignore = resolve_ignore(
+            getattr(args, "ignore", []) or [],
+            include_deps=getattr(args, "include_deps", False),
+            project_root=project_root,
+        )
+        out["inbound"] = _find_inbound_callers(symbol, project_root, ignore)
 
     if fmt == "text":
         show_all = bool(getattr(args, "show_all_unresolved", False))
+        text = _render_combined_text(out, depth, show_all_unresolved=show_all)
         return AgentResponse.success(
-            data={"text": _render_propagation_text(result, show_all_unresolved=show_all),
-                  **{k: v for k, v in result.items() if k != "function"}},
-            meta={"project_root": project_root, "function": result["function"]},
+            data={"text": text, **out},
+            meta={"project_root": project_root},
         )
 
-    return AgentResponse.success(data=result, meta={"project_root": project_root})
+    return AgentResponse.success(data=out, meta={"project_root": project_root})
+
+
+def _render_combined_text(out: Dict[str, Any], depth: int, show_all_unresolved: bool = False) -> str:
+    """Render a combined inbound/outbound view as text."""
+    lines: List[str] = [f"# impact: {out['function']}", ""]
+
+    if "outbound" in out:
+        lines.append("## outbound (what this function reaches into)")
+        lines.append("")
+        outbound = out["outbound"]
+        if depth == 1:
+            calls = outbound.get("external", {}).get("calls", [])
+            writes = outbound.get("external", {}).get("writes", [])
+            globals_ = outbound.get("external", {}).get("globals", [])
+            lines.append(f"  external calls:   {len(calls)}")
+            for c in calls:
+                lines.append(f"    {c}")
+            lines.append(f"  external writes:  {len(writes)}" + ("       <- side effects" if writes else ""))
+            for w in writes:
+                lines.append(f"    {w}")
+            lines.append(f"  globals modified: {len(globals_)}")
+            for g in globals_:
+                lines.append(f"    {g}")
+        else:
+            # depth>1 propagation result already has its own renderer
+            lines.append(_render_propagation_text(outbound, show_all_unresolved=show_all_unresolved))
+        lines.append("")
+
+    if "inbound" in out:
+        inbound = out["inbound"]
+        lines.append(f"## inbound (who calls this) — {len(inbound)} match(es)")
+        lines.append("")
+        if not inbound:
+            lines.append("  (no callers found in project)")
+        else:
+            for m in inbound[:50]:
+                start = m.get("start_line", "?")
+                lines.append(f"  {m['file']}:{start}")
+            if len(inbound) > 50:
+                lines.append(f"  ... and {len(inbound) - 50} more")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"

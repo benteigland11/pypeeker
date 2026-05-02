@@ -39,8 +39,8 @@ Three tools over MCP, designed to keep the agent's context budget tight:
 
 ### `peek(path, mode=..., symbol=...)` — file or symbol inspection
 - `mode="skeleton"` — file/package API surface with line ranges for targeted reads
-- `mode="locate"` / `"usages"` / `"ancestry"` — find a symbol's definition, usages, or class parents
-- `mode="impact"` — function side-effect map; set `depth=N` + `root` for transitive blast-radius across files
+- `mode="locate"` / `"ancestry"` — find a symbol's definition or class parents
+- `mode="impact"` — both directions for a function: outbound (what it touches) + inbound (who calls it). Use `direction="in"|"out"` to scope, `depth=N` + `root` for transitive outbound
 
 ### `cli(command, args)` — escape hatch
 Runs `pypeeker <command> <args>` and returns stdout. Use when you need a flag the consolidated tools don't expose (e.g., `--include-deps`, custom `--ignore`, `--format json` on a tool that defaults to text).
@@ -200,7 +200,8 @@ line range — in one call.
 
 ### Also covered by the same tools
 
-- **`peek(mode="locate"|"usages"|"ancestry")`** — AST-aware symbol search with scope ranges. No false positives from substring matches; distinguishes definitions from usages from inheritance.
+- **`peek(mode="locate"|"ancestry")`** — AST-aware symbol search with scope ranges. No false positives from substring matches; distinguishes definitions from inheritance.
+- **`peek(mode="impact")`** — both directions of a function in one call: outbound (what it depends on) and inbound (who calls it). Replaces the prior `usages`-as-its-own-thing split.
 - **`audit(kind="cycles")`** — import cycles, separates runtime cycles from safe `TYPE_CHECKING` cycles, ranks files by cycle membership.
 - **`audit(kind="missing-imports")`** — hallucinated or broken internal imports.
 - **`audit(kind="interfaces")`** — missing docstrings and type annotations across a project.

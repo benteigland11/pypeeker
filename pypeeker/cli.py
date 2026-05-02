@@ -90,7 +90,6 @@ def main() -> None:
     locate_args = [
         {"name": "symbol", "help": "The symbol name to locate (class, function, variable)"},
         {"name": "path", "help": "File or directory to search within"},
-        {"name": "--usages", "action": "store_true", "help": "Find where the symbol is used instead of defined"},
         {"name": "--inherited", "action": "store_true", "help": "If a class, also locate its parent classes"},
         {"name": "--ignore", "nargs": "*", "help": "Additional directories to ignore (added to defaults like venv, __pycache__, node_modules, etc.)", "default": []},
         {"name": "--include-deps", "action": "store_true", "dest": "include_deps", "help": "Scan everything including venvs, build artifacts, and caches (off by default)"},
@@ -125,7 +124,7 @@ def main() -> None:
     cli.add_commands("Navigation", [
         {
             "name": "locate",
-            "help": "Pinpoint a symbol's definition, usages, or ancestry via AST",
+            "help": "Pinpoint a symbol's definition (and optionally its class ancestry)",
             "handler": cmd_locate,
             "args": locate_args,
         },
@@ -140,15 +139,19 @@ def main() -> None:
         },
         {
             "name": "impact",
-            "help": "Analyze calls and side effects (blast radius) of a function",
+            "help": "Both directions of a function: outbound (what it touches) + inbound (who calls it)",
             "handler": cmd_impact,
             "args": [
                 {"name": "symbol", "help": "Function name (bare or Class.method)"},
                 {"name": "path", "help": "Path to the .py file"},
-                {"name": "--depth", "type": int, "default": 1, "help": "Transitive depth (1 = direct only, max 5)"},
+                {"name": "--inbound", "action": "store_true", "help": "Only show inbound (callers). Default is both directions."},
+                {"name": "--outbound", "action": "store_true", "help": "Only show outbound (what this function touches). Default is both directions."},
+                {"name": "--depth", "type": int, "default": 1, "help": "Outbound transitive depth (1 = direct only, max 5)"},
                 {"name": "--root", "default": None, "help": "Project root for cross-file resolution (defaults to file's directory)"},
-                {"name": "--format", "choices": ["json", "text"], "default": "text", "help": "Output format for depth>1 propagation results"},
-                {"name": "--show-all-unresolved", "action": "store_true", "dest": "show_all_unresolved", "help": "Show every unresolved call (default: only notable categories — effect builtins, stdlib, resolver gaps)"},
+                {"name": "--ignore", "nargs": "*", "default": [], "help": "Additional directories to ignore for inbound search"},
+                {"name": "--include-deps", "action": "store_true", "dest": "include_deps", "help": "Include venvs/build artifacts in inbound search"},
+                {"name": "--format", "choices": ["json", "text"], "default": "text", "help": "Output format"},
+                {"name": "--show-all-unresolved", "action": "store_true", "dest": "show_all_unresolved", "help": "Show every unresolved call (default: only notable categories)"},
             ],
         },
     ])
