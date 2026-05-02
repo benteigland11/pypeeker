@@ -16,9 +16,19 @@ class ImpactVisitor(ast.NodeVisitor):
         self._in_target = False
         self._locals = set()
         self._defined_internally = set()
+        self._class_stack = []
+
+    def _matches_target(self, function_name: str) -> bool:
+        full_name = ".".join([*self._class_stack, function_name])
+        return self.target_name in {function_name, full_name}
+
+    def visit_ClassDef(self, node):
+        self._class_stack.append(node.name)
+        self.generic_visit(node)
+        self._class_stack.pop()
 
     def visit_FunctionDef(self, node):
-        if node.name == self.target_name:
+        if self._matches_target(node.name):
             self.found = True
             self._in_target = True
             # Add arguments to locals
@@ -30,7 +40,7 @@ class ImpactVisitor(ast.NodeVisitor):
                 self._locals.add(node.args.vararg.arg)
             if node.args.kwarg:
                 self._locals.add(node.args.kwarg.arg)
-            
+
             self.generic_visit(node)
             self._in_target = False
         else:

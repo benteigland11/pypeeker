@@ -13,7 +13,6 @@ from pypeeker.commands.missing import cmd_missing
 from pypeeker.commands.skeleton import cmd_skeleton
 from pypeeker.commands.locate import cmd_locate
 from pypeeker.commands.interfaces import cmd_interfaces
-from pypeeker.commands.flow import cmd_flow
 from pypeeker.commands.impact import cmd_impact
 
 # Initialize FastMCP server
@@ -117,21 +116,6 @@ def interfaces(directory: str, ignore: list[str] = None, ignore_tests: bool = Tr
     """
     args = Args(directory=directory, ignore=ignore, ignore_tests=ignore_tests, page=page, size=size)
     return cmd_interfaces(args)
-
-@mcp.tool()
-def flow(symbol: str, path: str, format: str = "pseudo") -> Dict[str, Any]:
-    """
-    Map the logical control flow (pseudocode) of a single function or method.
-
-    Strips away boilerplate logic to show branches (if/else), loops, try/except,
-    and external calls. Every step is line-anchored so you can jump to source.
-
-    :param symbol: Name of the function or method to map.
-    :param path: Path to the .py file containing the function.
-    :param format: 'pseudo' (default) renders compact pseudocode with L### tags. 'json' returns a structured tree.
-    """
-    args = Args(symbol=symbol, path=path, format=format)
-    return cmd_flow(args)
 
 @mcp.tool()
 def impact(symbol: str, path: str) -> Dict[str, Any]:

@@ -13,7 +13,7 @@ def regenerate_manifests():
     gen = McpManifestGenerator(
         name="pypeeker",
         version="1.0.0",
-        description="Agent-native Python static analysis toolset. Includes circular import detection, hallucinated import tracking, API skeleton extraction, surgical symbol locating (definitions & usages), and logic flow mapping.",
+        description="Agent-native Python static analysis toolset. Includes circular import detection, hallucinated import tracking, API skeleton extraction, surgical symbol locating (definitions & usages), and blast-radius impact analysis.",
         command="pypeeker",
         args=["mcp"],
         author="@benteigland11"

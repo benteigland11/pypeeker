@@ -3,7 +3,6 @@ import json
 import sys
 from argparse import Namespace
 
-from pypeeker.commands.flow import cmd_flow
 from pypeeker.commands.impact import cmd_impact
 from pypeeker.commands.interfaces import cmd_interfaces
 
@@ -75,15 +74,28 @@ def test_interfaces_can_include_tests(tmp_path):
     assert {item["file"] for item in result["data"]} == {"pkg/module.py", "tests/test_module.py"}
 
 
-def test_flow_rejects_non_python_file(tmp_path):
-    """Verify flow only accepts Python source files."""
-    target = tmp_path / "notes.txt"
-    target.write_text("not python", encoding="utf-8")
+def test_impact_disambiguates_methods_by_class(tmp_path):
+    """Verify impact accepts qualified Class.method names so same-named methods resolve correctly."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        "class A:\n"
+        "    def run(self):\n"
+        "        self.a_only = True\n"
+        "class B:\n"
+        "    def run(self):\n"
+        "        self.b_only = True\n",
+        encoding="utf-8",
+    )
 
-    result = cmd_flow(Namespace(path=str(target), symbol="main"))
+    a = cmd_impact(Namespace(path=str(target), symbol="A.run"))
+    b = cmd_impact(Namespace(path=str(target), symbol="B.run"))
 
-    assert result["status"] == "error"
-    assert result["error"]["code"] == "INVALID_FILE_TYPE"
+    assert a["status"] == "success"
+    assert b["status"] == "success"
+    assert "self.a_only" in a["data"]["external"]["writes"]
+    assert "self.b_only" not in a["data"]["external"]["writes"]
+    assert "self.b_only" in b["data"]["external"]["writes"]
+    assert "self.a_only" not in b["data"]["external"]["writes"]
 
 
 def test_impact_rejects_non_python_file(tmp_path):

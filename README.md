@@ -34,21 +34,26 @@ Pinpoint and trace symbols across file boundaries.
 ### 3. Deep Dive (Vertical)
 Surgical analysis inside a specific file or function.
 *   **skeleton**: Extract the API surface of a file (imports, classes, variables, signatures) without function bodies.
-*   **flow**: Map the logical control flow (pseudocode) of a function with precise line anchors.
 *   **impact**: Analyze the blast radius of a function, distinguishing between internal and external side effects.
 
 ---
 
 ## Tool Showcase
 
-pypeeker turns "read whole files until you find the bug" into a targeted loop:
-**map → understand → edit**, with line anchors at every step.
+Two views the `Read` tool can't give an agent in one call:
+
+- **`skeleton`** — the API surface, without function bodies. Map a file or a
+  whole package, get every signature with line ranges, jump straight to the
+  methods that matter.
+- **`impact`** — the side-effect map of a function, without mentally tracing
+  the body. What it calls, what it reads, what it writes, whether it touches
+  globals — answered structurally.
 
 The walkthrough below uses [`psf/requests`](https://github.com/psf/requests) — a
 real, well-known library — to answer a real agent question:
 *"How does requests handle authentication during redirects?"*
 
-### 1. Map the file — `skeleton`
+### Map the file — `skeleton`
 
 Strip every function body. Keep imports, signatures, docstrings, and the line
 range each symbol occupies.
@@ -80,40 +85,38 @@ class SessionRedirectMixin:  # L107-353
 The two methods we want — `should_strip_auth` and `rebuild_auth` — are now
 visible with their exact line ranges.
 
-### 2. Understand the logic — `flow`
+### Trace what a function touches — `impact`
 
-Render a function's branching logic as line-anchored pseudocode. No comments,
-no whitespace noise, no docstring repetition.
+Once you've found the function, the next agent question is usually *"what
+does this affect?"* — globals, class state, external calls. Reading the body
+to find out is the manual approach. `impact` answers structurally:
 
 ```bash
-$ pypeeker flow Session.send requests/sessions.py --format pseudo
+$ pypeeker impact SessionRedirectMixin.rebuild_auth requests/sessions.py
 ```
-```
-# flow: Session.send  L675-750
-L682  kwargs.setdefault('stream', self.stream)
-L685  if 'proxies' not in kwargs:
-L686      kwargs['proxies'] = resolve_proxies(request, self.proxies, self.trust_env)
-L690  if isinstance(request, Request):
-L691      raise ValueError('You can only send PreparedRequests.')
-L705  r = adapter.send(request, **kwargs)
-L712  r = dispatch_hook('response', hooks, r, **kwargs)
-L723  if allow_redirects:
-L725      gen = self.resolve_redirects(r, request, **kwargs)
-L726      history = [resp for resp in gen]
-      else:
-L728      history = []
-L739  if not allow_redirects:
-L740      try:
-L741          r._next = next(self.resolve_redirects(r, request, yield_requests=True, **kwargs))
-L744      except StopIteration:
-L750  return r
+```json
+{
+  "external": {
+    "calls":  ["get_netrc_auth", "prepared_request.prepare_auth", "self.should_strip_auth"],
+    "reads":  ["self.trust_env", "..."],
+    "writes": [],
+    "globals": []
+  },
+  "internal": {
+    "writes": ["headers", "new_auth", "url"]
+  }
+}
 ```
 
-Whole-method bounds in the header (`L675-750`); per-step lines on every node.
-The agent can `Read offset=685 limit=2` for a single branch, or replace the
-whole method with `offset=675 limit=76`.
+Three external dependencies. Zero global writes. Zero shared-state mutation.
+That's a refactor-safety check the agent can do *before* changing anything,
+in one call instead of a multi-pass read.
 
-### 3. The token math
+`impact` accepts both bare names (`rebuild_auth`) and qualified names
+(`SessionRedirectMixin.rebuild_auth`) for unambiguous targeting when multiple
+classes share method names.
+
+### The token math
 
 Same task — find where requests handles redirect auth — measured against
 actual agent tool output, including the `Read` tool's line-number prefixes.
@@ -122,11 +125,11 @@ Tokens counted with OpenAI's `o200k_base` tokenizer (used by GPT-4o, o1, o3, and
 | Workflow                                                                    | Tokens |
 |-----------------------------------------------------------------------------|-------:|
 | `Read sessions.py` (full file)                                              | 9,063  |
-| `skeleton sessions.py` + 2 targeted `Read` calls (L128-158, L282-300)       | 3,218  |
-| **`skeleton sessions.py` + 2 `flow` calls on the relevant methods**         | **2,925** |
+| **`skeleton sessions.py` + 2 targeted `Read` calls (L128-158, L282-300)**   | **3,218** |
 
-The combo workflow ends with the agent **better informed** (logic structure
-instead of literal code) and able to jump to any line for surgical edits.
+The agent ends up reading only the two methods that actually matter, instead
+of 833 lines hoping the relevant code is in there — and the skeleton's line
+ranges (`# L128-158`) made the targeting possible.
 
 For project-scale orientation, mapping the full `requests` package (18 files):
 
@@ -143,7 +146,6 @@ line range — in one call.
 - **`locate`** — AST-aware symbol search with scope ranges (`path:start-end  signature`). No false positives from substring matches; distinguishes definitions from usages.
 - **`circular`** — find import cycles, separates runtime cycles from safe `TYPE_CHECKING` cycles.
 - **`missing`** — detect hallucinated or broken internal imports.
-- **`impact`** — blast-radius analysis: which globals, attributes, or external calls a function touches.
 - **`interfaces`** — flag missing docstrings and type annotations across a project.
 
 All tools default to condensed text/stub output over MCP. Pass `--format json`
@@ -209,7 +211,6 @@ Built using the following Cartograph Widgets (found in `cg/`):
 - `data-ast-skeleton-parser-python`: API signature extraction.
 - `data-ast-symbol-locator-python`: Surgical symbol pinpointing and ancestry.
 - `data-ast-interface-validator-python`: API gap detection.
-- `data-ast-flow-mapper-python`: Logical pseudocode generation.
 - `data-ast-impact-analyzer-python`: Side-effect and dependency mapping.
 - `infra-mcp-manifest-generator-python`: Automated distribution scaffolding.
 - `universal-agent-response-python`: Standardized JSON schema.

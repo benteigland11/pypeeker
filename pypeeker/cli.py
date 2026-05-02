@@ -14,7 +14,6 @@ try:
     from pypeeker.commands.skeleton import cmd_skeleton
     from pypeeker.commands.locate import cmd_locate
     from pypeeker.commands.interfaces import cmd_interfaces
-    from pypeeker.commands.flow import cmd_flow
     from pypeeker.commands.impact import cmd_impact
 except ImportError as e:
     print(f"Error: Could not import project components. {e}", file=sys.stderr)
@@ -41,7 +40,7 @@ def main() -> None:
     cli = AgentCLI(
         prog="pypeeker",
         description="Unified Agent-Native Python Analysis CLI.",
-        version="1.2.0"
+        version="1.3.0"
     )
     
     # Common arguments for analysis commands
@@ -122,16 +121,6 @@ def main() -> None:
             "help": "Extract structural API signature (AST skeleton) of Python files",
             "handler": cmd_skeleton,
             "args": path_args,
-        },
-        {
-            "name": "flow",
-            "help": "Extract the logical control flow (pseudocode) of a function",
-            "handler": cmd_flow,
-            "args": [
-                {"name": "symbol", "help": "Function name to map"},
-                {"name": "path", "help": "Path to the .py file"},
-                {"name": "--format", "choices": ["json", "pseudo"], "default": "pseudo", "help": "Output format: 'pseudo' (default, line-anchored pseudocode) or 'json' (structured tree)"},
-            ],
         },
         {
             "name": "impact",
