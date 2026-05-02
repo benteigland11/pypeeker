@@ -154,8 +154,9 @@ class McpManifestGenerator:
         }
         self._write_json(output_dir, "plugin.json", plugin_manifest)
         
+        # Claude Code rejects snake_case here — schema requires "mcpServers"
         mcp_config = {
-            "mcp_servers": {
+            "mcpServers": {
                 self.metadata["name"]: {
                     "command": self.metadata["command"],
                     "args": self.metadata["args"],

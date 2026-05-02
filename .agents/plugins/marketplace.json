@@ -1,0 +1,16 @@
+{
+  "name": "pypeeker-marketplace",
+  "interface": {
+    "displayName": "Pypeeker Tools"
+  },
+  "plugins": [
+    {
+      "name": "pypeeker",
+      "source": {
+        "source": "local",
+        "path": "../.."
+      },
+      "category": "Development"
+    }
+  ]
+}

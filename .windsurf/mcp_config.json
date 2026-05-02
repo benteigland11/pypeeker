@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pypeeker": {
+      "command": "pypeeker",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}

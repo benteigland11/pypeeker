@@ -21,9 +21,19 @@ def regenerate_manifests():
     
     print("Generating agent manifests...")
     gen.generate_all()
-    print("✓ extension/gemini-extension.json")
-    print("✓ .claude-plugin/plugin.json")
-    print("✓ marketplace.json")
+    for path in [
+        "extension/gemini-extension.json",
+        ".claude-plugin/plugin.json",
+        ".agents/plugins/marketplace.json",
+        ".cursor/mcp.json",
+        "opencode.json",
+        ".continue/mcpServers/pypeeker.json",
+        ".windsurf/mcp_config.json",
+        ".codex-plugin/plugin.json",
+        ".mcp.json",
+        "claude_desktop_snippet.json",
+    ]:
+        print(f"✓ {path}")
 
 if __name__ == "__main__":
     regenerate_manifests()

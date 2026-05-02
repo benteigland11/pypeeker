@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "pypeeker": {
+      "type": "local",
+      "command": [
+        "pypeeker",
+        "mcp"
+      ],
+      "enabled": true,
+      "environment": {}
+    }
+  }
+}
