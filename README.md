@@ -30,47 +30,46 @@ Every core feature in pypeeker-cli, from AST parsing to graph cycle detection, i
 
 ## What the agent gets
 
-Tools available to your agent over MCP, grouped by analysis depth:
+Three tools over MCP, designed to keep the agent's context budget tight:
 
-### Project scan (horizontal)
-Broad audits of the entire project tree.
-*   **`circular`** — Import dependency loops (distinguishes runtime crashes from safe `TYPE_CHECKING` cycles). Includes a hub ranking so the agent knows which file is the gravitational center of an import tangle.
-*   **`missing`** — Hallucinated or broken internal imports.
-*   **`interfaces`** — Missing docstrings and type hints across a project.
+### `audit(directory, kind=...)` — project-wide checks
+- `kind="cycles"` — import cycles + a `cycle_hubs` ranking of the most-tangled files
+- `kind="missing-imports"` — hallucinated or broken internal import paths
+- `kind="interfaces"` — missing docstrings and type annotations
 
-### Navigation (relationship)
-Pinpoint and trace symbols across file boundaries.
-*   **`locate`** — A symbol's exact definition bounds (start/end lines), its usages (`usages=True`), or its class ancestry (`inherited=True`).
+### `peek(path, mode=..., symbol=...)` — file or symbol inspection
+- `mode="skeleton"` — file/package API surface with line ranges for targeted reads
+- `mode="locate"` / `"usages"` / `"ancestry"` — find a symbol's definition, usages, or class parents
+- `mode="impact"` — function side-effect map; set `depth=N` + `root` for transitive blast-radius across files
 
-### Deep dive (vertical)
-Surgical analysis inside a specific file or function.
-*   **`skeleton`** — The API surface of a file (imports, classes, variables, signatures) without function bodies. Includes line ranges so the agent can targeted-read.
-*   **`impact`** — Side-effect map of a function: what it calls, reads, writes, and modifies. Optional `depth=N` walks the call graph transitively for refactor-safety analysis.
+### `cli(command, args)` — escape hatch
+Runs `pypeeker <command> <args>` and returns stdout. Use when you need a flag the consolidated tools don't expose (e.g., `--include-deps`, custom `--ignore`, `--format json` on a tool that defaults to text).
 
 ---
 
 ## Tool Showcase
 
-Two views the `Read` tool can't give an agent in one call:
+Two views the `Read` tool can't give an agent in one call — both surfaced
+through `peek`:
 
-- **`skeleton`** — the API surface, without function bodies. Map a file or a
-  whole package, get every signature with line ranges, jump straight to the
-  methods that matter.
-- **`impact`** — the side-effect map of a function, without mentally tracing
-  the body. What it calls, what it reads, what it writes, whether it touches
-  globals — answered structurally.
+- **`mode="skeleton"`** — the API surface, without function bodies. Map a
+  file or a whole package, get every signature with line ranges, jump
+  straight to the methods that matter.
+- **`mode="impact"`** — the side-effect map of a function, without mentally
+  tracing the body. What it calls, what it reads, what it writes, whether
+  it touches globals — answered structurally.
 
 The walkthrough below uses [`psf/requests`](https://github.com/psf/requests) — a
 real, well-known library — to answer a real agent question:
 *"How does requests handle authentication during redirects?"*
 
-### Map the file — `skeleton`
+### Map the file — `peek` with `mode="skeleton"`
 
-The agent calls `skeleton` over MCP. The tool strips every function body and
-returns imports, signatures, docstrings, and the line range each symbol
-occupies.
+The agent calls `peek` over MCP with skeleton mode. The tool strips every
+function body and returns imports, signatures, docstrings, and the line
+range each symbol occupies.
 
-> Agent invokes: `skeleton(path="requests/sessions.py")`
+> Agent invokes: `peek(path="requests/sessions.py", mode="skeleton")`
 > Returns:
 
 ```python
@@ -97,13 +96,13 @@ class SessionRedirectMixin:  # L107-353
 The two methods we want — `should_strip_auth` and `rebuild_auth` — are now
 visible with their exact line ranges.
 
-### Trace what a function touches — `impact`
+### Trace what a function touches — `peek` with `mode="impact"`
 
 Once the agent has found the function, the next question is usually *"what
 does this affect?"* — globals, class state, external calls. Reading the body
-to find out is the manual approach. `impact` answers structurally:
+to find out is the manual approach. `peek` in impact mode answers structurally:
 
-> Agent invokes: `impact(symbol="SessionRedirectMixin.rebuild_auth", path="requests/sessions.py")`
+> Agent invokes: `peek(path="requests/sessions.py", mode="impact", symbol="SessionRedirectMixin.rebuild_auth")`
 > Returns:
 
 ```json
@@ -124,7 +123,7 @@ Three external dependencies. Zero global writes. Zero shared-state mutation.
 That's a refactor-safety check the agent can do *before* changing anything,
 in one call instead of a multi-pass read.
 
-`impact` accepts both bare names (`rebuild_auth`) and qualified names
+Impact mode accepts both bare names (`rebuild_auth`) and qualified names
 (`SessionRedirectMixin.rebuild_auth`) for unambiguous targeting when multiple
 classes share method names.
 
@@ -135,7 +134,7 @@ the cascade?"* — that's what its callees touch, and what their callees touch,
 and so on. `depth=N` walks the call graph up to N levels (max 5), aggregates
 every external write, global mutation, and reached symbol into one answer:
 
-> Agent invokes: `impact(symbol="ChatService.process_message", path="backend/services/chat_service.py", depth=2, root=".")`
+> Agent invokes: `peek(path="backend/services/chat_service.py", mode="impact", symbol="ChatService.process_message", depth=2, root=".")`
 > Returns:
 
 ```
@@ -199,16 +198,15 @@ For project-scale orientation, mapping the full `requests` package (18 files):
 The entire library API surface — every public class, signature, docstring, and
 line range — in one call.
 
-### Also included
+### Also covered by the same tools
 
-- **`locate`** — AST-aware symbol search with scope ranges (`path:start-end  signature`). No false positives from substring matches; distinguishes definitions from usages.
-- **`circular`** — find import cycles, separates runtime cycles from safe `TYPE_CHECKING` cycles.
-- **`missing`** — detect hallucinated or broken internal imports.
-- **`interfaces`** — flag missing docstrings and type annotations across a project.
+- **`peek(mode="locate"|"usages"|"ancestry")`** — AST-aware symbol search with scope ranges. No false positives from substring matches; distinguishes definitions from usages from inheritance.
+- **`audit(kind="cycles")`** — import cycles, separates runtime cycles from safe `TYPE_CHECKING` cycles, ranks files by cycle membership.
+- **`audit(kind="missing-imports")`** — hallucinated or broken internal imports.
+- **`audit(kind="interfaces")`** — missing docstrings and type annotations across a project.
 
-All tools default to condensed text/stub output for the agent. Every tool
-also accepts `format="json"` for structured payloads when an agent needs
-to navigate fields programmatically.
+All modes default to condensed text/stub output for the agent. Pass
+`format="json"` when the agent needs to navigate fields programmatically.
 
 ---
 
