@@ -1,11 +1,22 @@
-# pypeeker-cli: Unified Agent-Native Python Analysis CLI
+# pypeeker-cli
 
 [![PyPI](https://img.shields.io/pypi/v/pypeeker-cli.svg)](https://pypi.org/project/pypeeker-cli/)
 [![Powered by Cartograph](https://img.shields.io/badge/Powered%20by-Cartograph-orange?style=flat-square)](https://github.com/benteigland11/Cartograph)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml/badge.svg)](https://github.com/benteigland11/pypeeker/actions/workflows/ci.yml)
 
-pypeeker-cli is a mcp-dependency only Python CLI toolset designed for AI agents to analyze codebases with surgical precision. It transforms raw source code into structured, actionable logical maps.
+**Agentic DX for Python.** *DX = developer experience: the tools, feedback,
+and ergonomics that make working in a codebase feel good. Agentic DX is the
+same idea, but for the AI agent doing the work instead of a human.* pypeeker
+gives AI coding agents AST-level views of any Python codebase — API surfaces,
+side-effect maps, import cycles, symbol locations — surfaced through MCP in
+token-efficient structured answers. So your agent can navigate, reason about,
+and refactor Python without reading whole files.
+
+> **Read-only by design.** pypeeker never edits, renames, or rewrites your
+> code. There is no `--apply`, no `--fix`, no auto-refactor. Every command
+> answers a question about the codebase; the agent acts on the answer. This
+> is a hard boundary, not a roadmap gap.
 
 ---
 
@@ -115,6 +126,46 @@ in one call instead of a multi-pass read.
 `impact` accepts both bare names (`rebuild_auth`) and qualified names
 (`SessionRedirectMixin.rebuild_auth`) for unambiguous targeting when multiple
 classes share method names.
+
+#### `--depth N`: transitive blast radius across files
+
+The harder refactor question is *"if I change this method's contract, what's
+the cascade?"* — that's what your callees touch, and what their callees touch,
+and so on. `--depth N` walks the call graph up to N levels (max 5), aggregates
+every external write, global mutation, and reached symbol into one answer:
+
+```bash
+$ pypeeker impact ChatService.process_message backend/services/chat_service.py --depth 2 --root .
+```
+```
+# impact: ChatService.process_message  (depth 2)
+
+transitive surface across 32 reached symbols:
+  external calls:   323 unique
+  external writes:  1       <- danger zone for refactors
+    self._failed_edit_hashes  in ChatService.process_message (depth 0)
+  globals modified: 0
+
+reached symbols:
+  depth 0  ChatService.process_message     backend/services/chat_service.py
+  depth 1  build_summary_context            backend/context_builder.py
+  depth 1  schedule_summary_update          backend/summary_updater.py
+  ... (29 more)
+
+unresolved calls (379 unique, not followed):
+  obj.method                         in ChatService.process_message [unresolved]
+  ... (built-ins, dynamic dispatch)
+```
+
+A 2,805-line method that calls into 32 other functions transitively mutates
+**exactly one** external attribute. That's a structural answer to "is this
+safe to refactor?" — derived in one tool call, with the unresolved cases
+flagged so the agent knows where its view is incomplete.
+
+**Static resolution only.** `self.X`, `Class.X`, and statically-imported
+names are followed. Dynamic dispatch (`obj.method()` where `obj`'s type is
+inferred at runtime) is reported as `unresolved`, not silently followed.
+Cycle-safe (visited-set deduplication). Project-bounded via `--root`.
 
 ### The token math
 

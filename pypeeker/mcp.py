@@ -131,17 +131,28 @@ def interfaces(directory: str, ignore: list[str] = None, ignore_tests: bool = Tr
     return cmd_interfaces(args)
 
 @mcp.tool()
-def impact(symbol: str, path: str) -> Dict[str, Any]:
+def impact(symbol: str, path: str, depth: int = 1, root: str = None, format: str = "text") -> Dict[str, Any]:
     """
     Analyze the side effects and dependencies (blast radius) of a function.
-    
-    Distinguishes between internal (local variables) and external (global state, 
-    class attributes, cross-module calls) impact.
-    
-    :param symbol: Name of the function or method to analyze.
+
+    At depth=1 (default): direct calls/reads/writes/globals of this function only.
+
+    At depth>1: walks the call graph transitively up to `depth` levels and
+    returns an aggregated transitive surface — every external write reachable
+    in the chain (the danger zone for refactors), every global modified, every
+    function visited, and any calls left unresolved at the depth limit.
+
+    Static resolution only. self.X / Class.X / imported names are followed;
+    dynamic dispatch (obj.method() where obj's type is unknown) is reported
+    as 'unresolved' rather than silently skipped. accepts qualified names
+    (Session.send) for unambiguous targeting.
+
+    :param symbol: Function name (bare or Class.method).
     :param path: Path to the .py file containing the function.
+    :param depth: Transitive depth (1 = direct only, max 5). Default 1.
+    :param root: Project root for cross-file resolution. Defaults to file's directory.
     """
-    args = Args(symbol=symbol, path=path)
+    args = Args(symbol=symbol, path=path, depth=depth, root=root, format=format)
     return cmd_impact(args)
 
 def main() -> None:

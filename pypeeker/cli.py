@@ -132,8 +132,11 @@ def main() -> None:
             "help": "Analyze calls and side effects (blast radius) of a function",
             "handler": cmd_impact,
             "args": [
-                {"name": "symbol", "help": "Function name to analyze"},
+                {"name": "symbol", "help": "Function name (bare or Class.method)"},
                 {"name": "path", "help": "Path to the .py file"},
+                {"name": "--depth", "type": int, "default": 1, "help": "Transitive depth (1 = direct only, max 5)"},
+                {"name": "--root", "default": None, "help": "Project root for cross-file resolution (defaults to file's directory)"},
+                {"name": "--format", "choices": ["json", "text"], "default": "text", "help": "Output format for depth>1 propagation results"},
             ],
         },
     ])

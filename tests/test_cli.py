@@ -158,6 +158,66 @@ def test_circular_summary_only_suppresses_cycle_bodies(tmp_path):
     assert "[1] runtime cycle:" not in text  # cycle bodies suppressed
 
 
+def test_impact_depth_propagates_writes_through_call_graph(tmp_path):
+    """At depth>=2, transitive_external.writes aggregates writes from called functions."""
+    from pypeeker.commands.impact import cmd_impact
+
+    (tmp_path / "mod.py").write_text(
+        "class Service:\n"
+        "    def entry(self):\n"
+        "        self.helper()\n"
+        "    def helper(self):\n"
+        "        self.shared_state = 1\n",
+        encoding="utf-8",
+    )
+
+    # Depth=1: only direct writes from entry (none — helper does the writing)
+    direct = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=1, root=str(tmp_path), format="json"))
+    assert direct["data"]["external"]["writes"] == []
+
+    # Depth=2: should surface helper's write transitively
+    transitive = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json"))
+    writes = transitive["data"]["transitive_external"]["writes"]
+    assert any(w["name"] == "self.shared_state" for w in writes)
+    assert any(w["in_symbol"] == "Service.helper" for w in writes)
+
+
+def test_impact_depth_marks_unresolved_calls(tmp_path):
+    """Dynamic dispatch and built-ins should be reported as unresolved, not silently followed."""
+    from pypeeker.commands.impact import cmd_impact
+
+    (tmp_path / "mod.py").write_text(
+        "class Service:\n"
+        "    def entry(self, obj):\n"
+        "        obj.method()\n"
+        "        len([1, 2, 3])\n",
+        encoding="utf-8",
+    )
+
+    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json"))
+    unresolved_calls = {u["call"] for u in result["data"]["unresolved"]}
+    assert "obj.method" in unresolved_calls
+    assert "len" in unresolved_calls
+
+
+def test_impact_depth_is_cycle_safe(tmp_path):
+    """A → B → A should not infinite-loop."""
+    from pypeeker.commands.impact import cmd_impact
+
+    (tmp_path / "mod.py").write_text(
+        "def a():\n"
+        "    b()\n"
+        "def b():\n"
+        "    a()\n",
+        encoding="utf-8",
+    )
+
+    # Should complete without timeout/recursion error
+    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="a", depth=5, root=str(tmp_path), format="json"))
+    visited_symbols = {v["symbol"] for v in result["data"]["visited"]}
+    assert visited_symbols == {"a", "b"}  # each visited exactly once
+
+
 def test_impact_disambiguates_methods_by_class(tmp_path):
     """Verify impact accepts qualified Class.method names so same-named methods resolve correctly."""
     target = tmp_path / "mod.py"
