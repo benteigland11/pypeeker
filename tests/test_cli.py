@@ -172,12 +172,12 @@ def test_impact_depth_propagates_writes_through_call_graph(tmp_path):
     )
 
     # Depth=1: only direct writes from entry (none — helper does the writing)
-    direct = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=1, root=str(tmp_path), format="json"))
-    assert direct["data"]["external"]["writes"] == []
+    direct = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=1, root=str(tmp_path), format="json", outbound=True))
+    assert direct["data"]["outbound"]["external"]["writes"] == []
 
     # Depth=2: should surface helper's write transitively
-    transitive = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json"))
-    writes = transitive["data"]["transitive_external"]["writes"]
+    transitive = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json", outbound=True))
+    writes = transitive["data"]["outbound"]["transitive_external"]["writes"]
     assert any(w["name"] == "self.shared_state" for w in writes)
     assert any(w["in_symbol"] == "Service.helper" for w in writes)
 
@@ -194,8 +194,8 @@ def test_impact_depth_marks_unresolved_calls(tmp_path):
         encoding="utf-8",
     )
 
-    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json"))
-    unresolved_calls = {u["call"] for u in result["data"]["unresolved"]}
+    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="Service.entry", depth=2, root=str(tmp_path), format="json", outbound=True))
+    unresolved_calls = {u["call"] for u in result["data"]["outbound"]["unresolved"]}
     assert "obj.method" in unresolved_calls
     assert "len" in unresolved_calls
 
@@ -213,8 +213,8 @@ def test_impact_depth_is_cycle_safe(tmp_path):
     )
 
     # Should complete without timeout/recursion error
-    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="a", depth=5, root=str(tmp_path), format="json"))
-    visited_symbols = {v["symbol"] for v in result["data"]["visited"]}
+    result = cmd_impact(Namespace(path=str(tmp_path / "mod.py"), symbol="a", depth=5, root=str(tmp_path), format="json", outbound=True))
+    visited_symbols = {v["symbol"] for v in result["data"]["outbound"]["visited"]}
     assert visited_symbols == {"a", "b"}  # each visited exactly once
 
 
@@ -231,15 +231,15 @@ def test_impact_disambiguates_methods_by_class(tmp_path):
         encoding="utf-8",
     )
 
-    a = cmd_impact(Namespace(path=str(target), symbol="A.run"))
-    b = cmd_impact(Namespace(path=str(target), symbol="B.run"))
+    a = cmd_impact(Namespace(path=str(target), symbol="A.run", outbound=True))
+    b = cmd_impact(Namespace(path=str(target), symbol="B.run", outbound=True))
 
     assert a["status"] == "success"
     assert b["status"] == "success"
-    assert "self.a_only" in a["data"]["external"]["writes"]
-    assert "self.b_only" not in a["data"]["external"]["writes"]
-    assert "self.b_only" in b["data"]["external"]["writes"]
-    assert "self.a_only" not in b["data"]["external"]["writes"]
+    assert "self.a_only" in a["data"]["outbound"]["external"]["writes"]
+    assert "self.b_only" not in a["data"]["outbound"]["external"]["writes"]
+    assert "self.b_only" in b["data"]["outbound"]["external"]["writes"]
+    assert "self.a_only" not in b["data"]["outbound"]["external"]["writes"]
 
 
 def test_impact_rejects_non_python_file(tmp_path):
