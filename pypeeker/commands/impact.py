@@ -359,27 +359,110 @@ def _render_propagation_text(data: Dict[str, Any], show_all_unresolved: bool = F
     return "\n".join(lines) + "\n"
 
 
+def _search_names_for_file(
+    candidate_file: str,
+    target_file: str,
+    target_dir: str,
+    project_root: str,
+    symbol_head: str,
+) -> set:
+    """Local names this file uses to refer to the target symbol.
+
+    Returns the canonical name when the file defines or directly imports the
+    symbol, plus any alias the file binds it to (`from X import resolve as
+    _resolve_bin` → "_resolve_bin"). Empty set means the file doesn't see the
+    symbol at all and should be skipped during inbound search.
+    """
+    target_abs = os.path.abspath(target_file)
+    if os.path.abspath(candidate_file) == target_abs:
+        return {symbol_head}
+
+    names: set = set()
+    try:
+        with open(candidate_file, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename=candidate_file)
+    except Exception:
+        return names
+
+    def _matches_target(resolved_path: str) -> bool:
+        r_abs = os.path.abspath(resolved_path)
+        return r_abs == target_abs or os.path.dirname(r_abs) == target_dir
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            mod = ("." * (node.level or 0)) + (node.module or "")
+            resolved, reason = resolve_import(
+                mod, candidate_file, project_root,
+                node.level > 0, node.level or 0,
+            )
+            if reason != "resolved" or not _matches_target(resolved):
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    # Wildcard import: assume canonical name is in scope.
+                    names.add(symbol_head)
+                elif alias.name == symbol_head:
+                    names.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            # `import M[.N]` — calls look like `M.symbol_head(...)` and a
+            # usage-mode search for symbol_head still matches the attribute
+            # access, so we just add the canonical name when M resolves.
+            for alias in node.names:
+                resolved, reason = resolve_import(
+                    alias.name, candidate_file, project_root, False, 0,
+                )
+                if reason == "resolved" and _matches_target(resolved):
+                    names.add(symbol_head)
+
+    return names
+
+
 def _find_inbound_callers(
     symbol: str,
+    target_file: str,
     project_root: str,
     ignore_dirs: List[str],
 ) -> List[Dict[str, Any]]:
-    """Walk the project for places that reference the symbol.
+    """Walk the project for files that actually import the defining file,
+    then name-match the symbol (or its local alias) within them.
 
-    Static name match — for `Class.method`, searches for the rightmost name
-    component (the method) across all project files. False positives are
-    possible (any name collision); the agent can filter.
+    A file is a real caller candidate when one of:
+      - it IS the defining file (symbol is in scope without import)
+      - its imports resolve to the defining file directly
+      - its imports resolve to a sibling in the same package directory
+        (covers `from pkg import name` re-exports via __init__.py)
+
+    Aliased imports (`from m import sym as foo`) are followed: this function
+    will name-match `foo` in those files instead of the canonical symbol.
+
+    This excludes unrelated files that happen to define their own function
+    of the same name.
     """
-    search_name = symbol.rsplit(".", 1)[-1]
+    symbol_head = symbol.rsplit(".", 1)[-1]
+    target_abs = os.path.abspath(target_file)
+    target_dir = os.path.dirname(target_abs)
     matches: List[Dict[str, Any]] = []
+    seen: set = set()
+
     for f in walk_python_files(project_root, ignore_dirs=ignore_dirs):
-        result = locate_symbol(f, search_name, mode="usage")
-        if result and "error" in result[0]:
+        search_names = _search_names_for_file(
+            f, target_file, target_dir, project_root, symbol_head,
+        )
+        if not search_names:
             continue
-        for m in result:
-            m["file"] = os.path.relpath(f, project_root)
-            m["absolute_path"] = f
-            matches.append(m)
+        rel = os.path.relpath(f, project_root)
+        for name in search_names:
+            result = locate_symbol(f, name, mode="usage")
+            if result and "error" in result[0]:
+                continue
+            for m in result:
+                key = (f, m.get("start_line"), m.get("end_line"), m.get("name"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                m["file"] = rel
+                m["absolute_path"] = f
+                matches.append(m)
     return matches
 
 
@@ -435,7 +518,7 @@ def cmd_impact(args: argparse.Namespace) -> Dict[str, Any]:
             include_deps=getattr(args, "include_deps", False),
             project_root=project_root,
         )
-        out["inbound"] = _find_inbound_callers(symbol, project_root, ignore)
+        out["inbound"] = _find_inbound_callers(symbol, file_path, project_root, ignore)
 
     if fmt == "text":
         show_all = bool(getattr(args, "show_all_unresolved", False))

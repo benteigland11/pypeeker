@@ -242,6 +242,131 @@ def test_impact_disambiguates_methods_by_class(tmp_path):
     assert "self.a_only" not in b["data"]["outbound"]["external"]["writes"]
 
 
+def test_impact_inbound_filters_out_unrelated_same_name(tmp_path):
+    """Verify inbound only returns callers that actually import the defining file.
+
+    Regression: prior behavior did pure-name matching across the project, so a
+    symbol like `resolve` would falsely match every unrelated file that defined
+    its own `resolve()`. The fix gates inbound hits on the importing file
+    actually pulling in the defining module.
+    """
+    target = tmp_path / "binary_resolver.py"
+    target.write_text(
+        "def resolve(name):\n"
+        "    return name\n",
+        encoding="utf-8",
+    )
+    # Real caller — imports from the defining module.
+    real = tmp_path / "real_caller.py"
+    real.write_text(
+        "from binary_resolver import resolve\n"
+        "def go():\n"
+        "    return resolve('nim')\n",
+        encoding="utf-8",
+    )
+    # Fake caller — has a function called `resolve` but doesn't import the target.
+    fake = tmp_path / "fake_caller.py"
+    fake.write_text(
+        "def resolve(x):\n"
+        "    return x + 1\n"
+        "def use():\n"
+        "    return resolve(42)\n",
+        encoding="utf-8",
+    )
+
+    result = cmd_impact(Namespace(
+        path=str(target), symbol="resolve",
+        inbound=True, root=str(tmp_path), format="json",
+    ))
+
+    assert result["status"] == "success"
+    files = {hit["file"] for hit in result["data"]["inbound"]}
+    assert "real_caller.py" in files
+    assert "fake_caller.py" not in files
+
+
+def test_impact_inbound_keeps_same_file_callers(tmp_path):
+    """Verify inbound keeps callers in the same file as the defining symbol
+    (no import needed when symbol is in local scope)."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        "def helper():\n"
+        "    return 1\n"
+        "def caller():\n"
+        "    return helper()\n",
+        encoding="utf-8",
+    )
+
+    result = cmd_impact(Namespace(
+        path=str(target), symbol="helper",
+        inbound=True, root=str(tmp_path), format="json",
+    ))
+
+    assert result["status"] == "success"
+    files = {hit["file"] for hit in result["data"]["inbound"]}
+    assert "mod.py" in files
+
+
+def test_impact_inbound_accepts_sibling_package_reexport(tmp_path):
+    """Verify inbound accepts callers that import via a sibling __init__.py
+    in the same package directory (covers `from pkg import name` re-exports)."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text(
+        "from .core import resolve\n",
+        encoding="utf-8",
+    )
+    target = pkg / "core.py"
+    target.write_text(
+        "def resolve(name):\n"
+        "    return name\n",
+        encoding="utf-8",
+    )
+    caller = tmp_path / "caller.py"
+    caller.write_text(
+        "from pkg import resolve\n"
+        "def go():\n"
+        "    return resolve('x')\n",
+        encoding="utf-8",
+    )
+
+    result = cmd_impact(Namespace(
+        path=str(target), symbol="resolve",
+        inbound=True, root=str(tmp_path), format="json",
+    ))
+
+    assert result["status"] == "success"
+    files = {hit["file"] for hit in result["data"]["inbound"]}
+    assert "caller.py" in files
+
+
+def test_impact_inbound_resolves_aliased_imports(tmp_path):
+    """Verify inbound finds callers that import the symbol under a local alias
+    (`from m import resolve as _resolve_bin`)."""
+    target = tmp_path / "binary_resolver.py"
+    target.write_text(
+        "def resolve(name):\n"
+        "    return name\n",
+        encoding="utf-8",
+    )
+    aliased = tmp_path / "aliased_caller.py"
+    aliased.write_text(
+        "from binary_resolver import resolve as _resolve_bin\n"
+        "def go():\n"
+        "    return _resolve_bin('nim')\n",
+        encoding="utf-8",
+    )
+
+    result = cmd_impact(Namespace(
+        path=str(target), symbol="resolve",
+        inbound=True, root=str(tmp_path), format="json",
+    ))
+
+    assert result["status"] == "success"
+    files = {hit["file"] for hit in result["data"]["inbound"]}
+    assert "aliased_caller.py" in files
+
+
 def test_impact_rejects_non_python_file(tmp_path):
     """Verify impact only accepts Python source files."""
     target = tmp_path / "notes.txt"
